@@ -1,0 +1,38 @@
+import { Movie } from '@/types/movie';
+import { MovieCard } from './MovieCard';
+
+interface MovieGridProps {
+  movies: Movie[];
+  onUpdate: (id: string, updates: Partial<Movie>) => void;
+  onDelete: (id: string) => void;
+}
+
+export const MovieGrid = ({ movies, onUpdate, onDelete }: MovieGridProps) => {
+  if (movies.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="w-24 h-24 rounded-full bg-movie-surface flex items-center justify-center mb-4">
+          <span className="text-3xl">🎬</span>
+        </div>
+        <h3 className="text-xl font-semibold text-foreground mb-2">No movies yet</h3>
+        <p className="text-muted-foreground max-w-md">
+          Start building your movie collection by adding your first film from IMDB. 
+          You and Bruna can rate and comment on each movie!
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+      {movies.map((movie) => (
+        <MovieCard
+          key={movie.id}
+          movie={movie}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+        />
+      ))}
+    </div>
+  );
+};
