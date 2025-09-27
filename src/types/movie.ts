@@ -13,6 +13,8 @@ export interface Movie {
   renanComments?: string;
   brunaRating?: number;
   brunaComments?: string;
+  watched?: boolean;
+  tags?: string[];
   addedDate: string;
 }
 

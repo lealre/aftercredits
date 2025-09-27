@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Movie } from '@/types/movie';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Star, MessageCircle } from 'lucide-react';
+import { Star, MessageCircle, Eye, EyeOff } from 'lucide-react';
 import { MovieModal } from './MovieModal';
+import { StarRating } from './StarRating';
 
 interface MovieCardProps {
   movie: Movie;
@@ -16,8 +17,8 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
 
   const getRatingColor = (rating?: number) => {
     if (!rating) return 'text-muted-foreground';
-    if (rating >= 8) return 'text-movie-rating';
-    if (rating >= 6) return 'text-movie-gold';
+    if (rating >= 4) return 'text-movie-rating';
+    if (rating >= 2.5) return 'text-movie-blue';
     return 'text-orange-400';
   };
 
@@ -27,7 +28,7 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
   return (
     <>
       <Card 
-        className="group relative overflow-hidden bg-gradient-card border-border/50 hover:border-movie-gold/30 transition-all duration-300 hover:shadow-glow cursor-pointer transform hover:scale-[1.02]"
+        className="group relative overflow-hidden bg-gradient-card border-border/50 hover:border-movie-blue/30 transition-all duration-300 hover:shadow-glow cursor-pointer transform hover:scale-[1.02]"
         onClick={() => setIsModalOpen(true)}
       >
         <div className="aspect-[2/3] relative overflow-hidden">
@@ -43,49 +44,63 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
           
           {/* IMDB Rating Badge */}
           <div className="absolute top-3 left-3">
-            <Badge variant="secondary" className="bg-movie-surface/90 border-movie-gold/30">
-              <Star className="w-3 h-3 mr-1 text-movie-gold" />
+            <Badge variant="secondary" className="bg-movie-surface/90 border-movie-blue/30">
+              <Star className="w-3 h-3 mr-1 text-movie-blue" />
               {movie.imdbRating}
             </Badge>
           </div>
 
-          {/* Rating Indicators */}
-          {hasRatings && (
-            <div className="absolute top-3 right-3 flex gap-1">
-              {movie.renanRating && (
-                <div className={`w-2 h-2 rounded-full ${getRatingColor(movie.renanRating)} bg-current`} />
-              )}
-              {movie.brunaRating && (
-                <div className={`w-2 h-2 rounded-full ${getRatingColor(movie.brunaRating)} bg-current`} />
-              )}
-            </div>
-          )}
+          {/* Watched Status */}
+          <div className="absolute top-3 right-3">
+            {movie.watched ? (
+              <Eye className="w-4 h-4 text-movie-rating" />
+            ) : (
+              <EyeOff className="w-4 h-4 text-muted-foreground" />
+            )}
+          </div>
+
 
           {/* Comments Indicator */}
           {hasComments && (
             <div className="absolute bottom-3 right-3 opacity-70">
-              <MessageCircle className="w-4 h-4 text-movie-gold" />
+              <MessageCircle className="w-4 h-4 text-movie-blue" />
             </div>
           )}
         </div>
 
         <div className="p-4">
-          <h3 className="font-semibold text-foreground mb-1 line-clamp-2 group-hover:text-movie-gold transition-colors">
+          <h3 className="font-semibold text-foreground mb-1 line-clamp-2 group-hover:text-movie-blue transition-colors">
             {movie.title}
           </h3>
           <p className="text-sm text-muted-foreground mb-2">
             {movie.year} • {movie.genre}
           </p>
           
+          {/* Tags */}
+          {movie.tags && movie.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {movie.tags.slice(0, 3).map((tag) => (
+                <Badge key={tag} variant="outline" className="text-xs border-movie-blue/30">
+                  {tag}
+                </Badge>
+              ))}
+              {movie.tags.length > 3 && (
+                <Badge variant="outline" className="text-xs border-movie-blue/30">
+                  +{movie.tags.length - 3}
+                </Badge>
+              )}
+            </div>
+          )}
+          
           {/* Personal Ratings */}
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex gap-3">
-              <span className={`${movie.renanRating ? getRatingColor(movie.renanRating) : 'text-muted-foreground'}`}>
-                Renan: {movie.renanRating || '-'}
-              </span>
-              <span className={`${movie.brunaRating ? getRatingColor(movie.brunaRating) : 'text-muted-foreground'}`}>
-                Bruna: {movie.brunaRating || '-'}
-              </span>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Renan:</span>
+              <StarRating rating={movie.renanRating || 0} readonly size={12} />
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Bruna:</span>
+              <StarRating rating={movie.brunaRating || 0} readonly size={12} />
             </div>
           </div>
         </div>

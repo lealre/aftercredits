@@ -49,8 +49,8 @@ export default {
         },
         // Movie app specific colors
         movie: {
-          gold: "hsl(var(--movie-gold))",
-          "gold-light": "hsl(var(--movie-gold-light))",
+          blue: "hsl(var(--movie-blue))",
+          "blue-light": "hsl(var(--movie-blue-light))",
           rating: "hsl(var(--movie-rating))",
           surface: "hsl(var(--movie-surface))",
           "surface-hover": "hsl(var(--movie-surface-hover))",

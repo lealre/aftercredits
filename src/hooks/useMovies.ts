@@ -50,6 +50,8 @@ export const useMovies = () => {
       'Renan Comments',
       'Bruna Rating',
       'Bruna Comments',
+      'Watched',
+      'Tags',
       'Genre',
       'Director',
       'Added Date'
@@ -64,6 +66,8 @@ export const useMovies = () => {
       movie.renanComments || '',
       movie.brunaRating || '',
       movie.brunaComments || '',
+      movie.watched ? 'Yes' : 'No',
+      movie.tags ? movie.tags.join(';') : '',
       movie.genre,
       movie.director,
       movie.addedDate
