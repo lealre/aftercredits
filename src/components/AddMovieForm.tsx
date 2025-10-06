@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Plus, Loader2 } from 'lucide-react';
-import { extractImdbId, fetchMovieData, createFallbackMovie } from '@/services/imdbService';
+import { addMovieToBackend } from '@/services/backendService';
 import { Movie } from '@/types/movie';
 import { useToast } from '@/hooks/use-toast';
 
@@ -24,37 +24,42 @@ export const AddMovieForm = ({ onAdd, loading, setLoading }: AddMovieFormProps) 
     setLoading(true);
     
     try {
-      const imdbId = extractImdbId(url);
+      const result = await addMovieToBackend(url);
       
-      if (!imdbId) {
+      if (result.error) {
         toast({
-          title: "Invalid URL",
-          description: "Please enter a valid IMDB URL or ID (e.g., tt1234567)",
+          title: "Error",
+          description: result.error,
           variant: "destructive",
         });
         return;
       }
 
-      // Try to fetch movie data
-      let movie = await fetchMovieData(imdbId);
-      
-      if (!movie) {
-        // Create fallback movie if API fails
-        movie = createFallbackMovie(imdbId, url);
-        toast({
-          title: "Movie added with limited data",
-          description: "Could not fetch full movie details. You can edit the information manually.",
-          variant: "destructive",
-        });
-      } else {
+      if (result.movie) {
+        const movie: Movie = {
+          id: result.movie.id,
+          imdbId: result.movie.id,
+          title: result.movie.primaryTitle,
+          year: result.movie.startYear.toString(),
+          poster: result.movie.primaryImage.url,
+          imdbRating: result.movie.rating.aggregateRating.toString(),
+          plot: result.movie.plot,
+          genre: result.movie.genres.join(', '),
+          director: result.movie.directorsNames.join(', '),
+          actors: result.movie.starsNames.join(', '),
+          addedDate: new Date().toISOString().split('T')[0],
+          watched: false,
+          tags: [],
+        };
+
+        onAdd(movie);
+        setUrl('');
+        
         toast({
           title: "Movie added successfully!",
           description: `"${movie.title}" has been added to your list.`,
         });
       }
-
-      onAdd(movie);
-      setUrl('');
       
     } catch (error) {
       console.error('Error adding movie:', error);

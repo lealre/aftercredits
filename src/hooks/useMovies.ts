@@ -1,43 +1,106 @@
 import { useState, useEffect } from 'react';
 import { Movie } from '@/types/movie';
+import { fetchMovies } from '@/services/backendService';
 
-const STORAGE_KEY = 'movie-ratings-data';
+const LOCAL_DATA_KEY = 'movie-local-data';
+
+interface LocalMovieData {
+  renanRating?: number;
+  renanComments?: string;
+  brunaRating?: number;
+  brunaComments?: string;
+  watched?: boolean;
+  tags?: string[];
+  addedDate?: string;
+}
 
 export const useMovies = () => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
+  const [localDataMap, setLocalDataMap] = useState<Record<string, LocalMovieData>>({});
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
+    const loadMovies = async () => {
+      setLoading(true);
       try {
-        setMovies(JSON.parse(saved));
+        // Load local data (ratings, comments, watched, tags)
+        const savedLocalData = localStorage.getItem(LOCAL_DATA_KEY);
+        const localData: Record<string, LocalMovieData> = savedLocalData 
+          ? JSON.parse(savedLocalData) 
+          : {};
+        setLocalDataMap(localData);
+
+        // Fetch movies from backend
+        const fetchedMovies = await fetchMovies(localData);
+        setMovies(fetchedMovies);
       } catch (error) {
         console.error('Error loading movies:', error);
+      } finally {
+        setLoading(false);
       }
-    }
+    };
+
+    loadMovies();
   }, []);
 
-  const saveMovies = (newMovies: Movie[]) => {
-    setMovies(newMovies);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newMovies));
+  const saveLocalData = (data: Record<string, LocalMovieData>) => {
+    localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(data));
+    setLocalDataMap(data);
   };
 
   const addMovie = (movie: Movie) => {
     const newMovies = [...movies, movie];
-    saveMovies(newMovies);
+    setMovies(newMovies);
+
+    // Save local data for this movie
+    const newLocalData = {
+      ...localDataMap,
+      [movie.id]: {
+        renanRating: movie.renanRating,
+        renanComments: movie.renanComments,
+        brunaRating: movie.brunaRating,
+        brunaComments: movie.brunaComments,
+        watched: movie.watched,
+        tags: movie.tags,
+        addedDate: movie.addedDate,
+      },
+    };
+    saveLocalData(newLocalData);
   };
 
   const updateMovie = (id: string, updates: Partial<Movie>) => {
     const newMovies = movies.map(movie => 
       movie.id === id ? { ...movie, ...updates } : movie
     );
-    saveMovies(newMovies);
+    setMovies(newMovies);
+
+    // Update local data
+    const movie = newMovies.find(m => m.id === id);
+    if (movie) {
+      const newLocalData = {
+        ...localDataMap,
+        [id]: {
+          renanRating: movie.renanRating,
+          renanComments: movie.renanComments,
+          brunaRating: movie.brunaRating,
+          brunaComments: movie.brunaComments,
+          watched: movie.watched,
+          tags: movie.tags,
+          addedDate: movie.addedDate,
+        },
+      };
+      saveLocalData(newLocalData);
+    }
   };
 
   const deleteMovie = (id: string) => {
     const newMovies = movies.filter(movie => movie.id !== id);
-    saveMovies(newMovies);
+    setMovies(newMovies);
+
+    // Remove from local data
+    const newLocalData = { ...localDataMap };
+    delete newLocalData[id];
+    saveLocalData(newLocalData);
   };
 
   const exportToCSV = () => {
