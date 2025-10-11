@@ -16,6 +16,9 @@ import { Switch } from '@/components/ui/switch';
 import { Star, Trash2, ExternalLink, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
+import { useUsers } from '@/hooks/useUsers';
+import { useRatings } from '@/hooks/useRatings';
+import { saveRating } from '@/services/backendService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -27,13 +30,13 @@ interface MovieModalProps {
 
 export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete }: MovieModalProps) => {
   const { toast } = useToast();
-  const [renanRating, setRenanRating] = useState(movie.renanRating || 0);
-  const [renanComments, setRenanComments] = useState(movie.renanComments || '');
-  const [brunaRating, setBrunaRating] = useState(movie.brunaRating || 0);
-  const [brunaComments, setBrunaComments] = useState(movie.brunaComments || '');
+  const { users, getUserNameById } = useUsers();
+  const { getRatingForUser } = useRatings(movie.imdbId);
+  const [userRatings, setUserRatings] = useState<Record<string, { rating: number; comments: string }>>({});
   const [watched, setWatched] = useState(movie.watched || false);
   const [tags, setTags] = useState<string[]>(movie.tags || []);
   const [newTag, setNewTag] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const handleAddTag = () => {
     if (newTag.trim() && !newTag.includes(' ') && !tags.includes(newTag.trim())) {
@@ -46,22 +49,86 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete }: Movie
     setTags(tags.filter(tag => tag !== tagToRemove));
   };
 
-  const handleSave = () => {
-    const updates: Partial<Movie> = {
-      renanRating: renanRating || undefined,
-      brunaRating: brunaRating || undefined,
-      renanComments: renanComments || undefined,
-      brunaComments: brunaComments || undefined,
-      watched,
-      tags: tags.length > 0 ? tags : undefined,
-    };
-    
-    onUpdate(movie.id, updates);
-    toast({
-      title: "Movie updated!",
-      description: "Your movie information has been saved.",
-    });
-    onClose();
+  const updateUserRating = (userId: string, rating: number) => {
+    setUserRatings(prev => ({
+      ...prev,
+      [userId]: { ...prev[userId], rating }
+    }));
+  };
+
+  const updateUserComments = (userId: string, comments: string) => {
+    setUserRatings(prev => ({
+      ...prev,
+      [userId]: { ...prev[userId], comments }
+    }));
+  };
+
+  const getUserRating = (userId: string) => {
+    // First check if user has a local rating being edited
+    if (userRatings[userId]) {
+      return userRatings[userId].rating;
+    }
+    // Otherwise get from API
+    const apiRating = getRatingForUser(userId);
+    return apiRating ? apiRating.rating : 0;
+  };
+
+  const getUserComments = (userId: string) => {
+    // First check if user has a local rating being edited
+    if (userRatings[userId]) {
+      return userRatings[userId].comments;
+    }
+    // Otherwise get from API
+    const apiRating = getRatingForUser(userId);
+    return apiRating ? apiRating.comments : '';
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // Save ratings first if there are any
+      if (Object.keys(userRatings).length > 0) {
+        const savePromises = Object.entries(userRatings).map(async ([userId, ratingData]) => {
+          if (ratingData.rating > 0 || ratingData.comments.trim()) {
+            return saveRating({
+              titleId: movie.imdbId,
+              userId: userId,
+              note: ratingData.rating,
+              comments: ratingData.comments,
+            });
+          }
+          return null;
+        });
+
+        await Promise.all(savePromises.filter(Boolean));
+        
+        // Clear local ratings after successful save
+        setUserRatings({});
+      }
+
+      // Save movie updates
+      const updates: Partial<Movie> = {
+        watched,
+        tags: tags.length > 0 ? tags : undefined,
+      };
+      
+      onUpdate(movie.id, updates);
+      
+      toast({
+        title: "Movie updated!",
+        description: "Your movie information and ratings have been saved.",
+      });
+      onClose();
+    } catch (error) {
+      console.error('Error saving:', error);
+      toast({
+        title: "Error saving",
+        description: "Failed to save changes. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = () => {
@@ -136,7 +203,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete }: Movie
             </div>
 
             {/* Tags */}
-            <div className="space-y-3">
+            {/* <div className="space-y-3">
               <h3 className="text-lg font-semibold text-movie-blue">Tags</h3>
               <div className="flex flex-wrap gap-2 mb-2">
                 {tags.map((tag) => (
@@ -165,54 +232,44 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete }: Movie
               </div>
             </div>
 
-            <Separator className="bg-border" />
+            <Separator className="bg-border" /> */}
 
-            {/* Renan's Rating */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-movie-blue">Renan's Rating</h3>
-              <div className="space-y-2">
-                <Label>Rating (0-5 stars)</Label>
-                <StarRating rating={renanRating} onRatingChange={setRenanRating} />
+            {/* User Ratings */}
+            {users.map((user, index) => (
+              <div key={user.id}>
+                {index > 0 && <Separator className="bg-border" />}
+                <div className="space-y-3">
+                  <h3 className="text-lg font-semibold text-movie-blue">{user.name}'s Rating</h3>
+                  <div className="space-y-2">
+                    <Label>Rating (0-10 scale)</Label>
+                    <StarRating 
+                      rating={getUserRating(user.id)} 
+                      onRatingChange={(rating) => updateUserRating(user.id, rating)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`${user.id}-comments`}>Comments</Label>
+                    <Textarea
+                      id={`${user.id}-comments`}
+                      value={getUserComments(user.id)}
+                      onChange={(e) => updateUserComments(user.id, e.target.value)}
+                      placeholder="What did you think about this movie?"
+                      className="bg-movie-surface border-border resize-none"
+                      rows={3}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="renan-comments">Comments</Label>
-                <Textarea
-                  id="renan-comments"
-                  value={renanComments}
-                  onChange={(e) => setRenanComments(e.target.value)}
-                  placeholder="What did you think about this movie?"
-                  className="bg-movie-surface border-border resize-none"
-                  rows={3}
-                />
-              </div>
-            </div>
-
-            <Separator className="bg-border" />
-
-            {/* Bruna's Rating */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-movie-blue">Bruna's Rating</h3>
-              <div className="space-y-2">
-                <Label>Rating (0-5 stars)</Label>
-                <StarRating rating={brunaRating} onRatingChange={setBrunaRating} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="bruna-comments">Comments</Label>
-                <Textarea
-                  id="bruna-comments"
-                  value={brunaComments}
-                  onChange={(e) => setBrunaComments(e.target.value)}
-                  placeholder="What did you think about this movie?"
-                  className="bg-movie-surface border-border resize-none"
-                  rows={3}
-                />
-              </div>
-            </div>
+            ))}
 
             {/* Actions */}
             <div className="flex gap-2 pt-4">
-              <Button onClick={handleSave} className="flex-1 bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light">
-                Save Changes
+              <Button 
+                onClick={handleSave} 
+                disabled={saving}
+                className="flex-1 bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light"
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
               </Button>
               <Button 
                 variant="destructive" 

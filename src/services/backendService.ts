@@ -1,4 +1,4 @@
-import { Movie } from '@/types/movie';
+import { Movie, User, UsersResponse, Rating, RatingsResponse } from '@/types/movie';
 
 const API_BASE_URL = '/api';
 
@@ -33,7 +33,7 @@ interface AddMovieResponse {
   status_code?: string;
 }
 
-const mapBackendMovieToMovie = (backendMovie: BackendMovie, localData?: Partial<Movie>): Movie => {
+const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
   return {
     id: backendMovie.id,
     imdbId: backendMovie.id,
@@ -45,19 +45,15 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie, localData?: Partial<
     genre: backendMovie.genres.join(', '),
     director: backendMovie.directorsNames.join(', '),
     actors: backendMovie.starsNames.join(', '),
-    addedDate: localData?.addedDate || new Date().toISOString().split('T')[0],
-    renanRating: localData?.renanRating,
-    renanComments: localData?.renanComments,
-    brunaRating: localData?.brunaRating,
-    brunaComments: localData?.brunaComments,
-    watched: localData?.watched || false,
-    tags: localData?.tags || [],
+    addedDate: new Date().toISOString().split('T')[0],
+    watched: false,
+    tags: [],
   };
 };
 
-export const fetchMovies = async (localDataMap: Record<string, Partial<Movie>>): Promise<Movie[]> => {
+export const fetchMovies = async (): Promise<Movie[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/movies`);
+    const response = await fetch(`${API_BASE_URL}/titles`);
     
     if (!response.ok) {
       throw new Error('Failed to fetch movies from backend');
@@ -66,7 +62,7 @@ export const fetchMovies = async (localDataMap: Record<string, Partial<Movie>>):
     const data: BackendResponse = await response.json();
     
     return data.movies.map(movie => 
-      mapBackendMovieToMovie(movie, localDataMap[movie.id])
+      mapBackendMovieToMovie(movie)
     );
   } catch (error) {
     console.error('Error fetching movies:', error);
@@ -76,7 +72,7 @@ export const fetchMovies = async (localDataMap: Record<string, Partial<Movie>>):
 
 export const addMovieToBackend = async (url: string): Promise<{ movie?: BackendMovie; error?: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/movies`, {
+    const response = await fetch(`${API_BASE_URL}/titles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -93,6 +89,65 @@ export const addMovieToBackend = async (url: string): Promise<{ movie?: BackendM
     return { movie };
   } catch (error) {
     console.error('Error adding movie:', error);
+    throw error;
+  }
+};
+
+export const fetchUsers = async (): Promise<User[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/users`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch users from backend');
+    }
+    
+    const data: UsersResponse = await response.json();
+    return data.users;
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    throw error;
+  }
+};
+
+export const fetchRatings = async (titleId: string): Promise<Rating[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/titles/${titleId}/ratings`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch ratings from backend');
+    }
+    
+    const data: RatingsResponse = await response.json();
+    return data.ratings;
+  } catch (error) {
+    console.error('Error fetching ratings:', error);
+    throw error;
+  }
+};
+
+export const saveRating = async (ratingData: {
+  titleId: string;
+  userId: string;
+  note: number;
+  comments: string;
+}): Promise<Rating> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/ratings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(ratingData),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to save rating');
+    }
+    
+    const rating: Rating = await response.json();
+    return rating;
+  } catch (error) {
+    console.error('Error saving rating:', error);
     throw error;
   }
 };

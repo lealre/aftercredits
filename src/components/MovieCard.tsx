@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Star, MessageCircle, Eye, EyeOff } from 'lucide-react';
 import { MovieModal } from './MovieModal';
 import { StarRating } from './StarRating';
+import { useUsers } from '@/hooks/useUsers';
+import { useRatings } from '@/hooks/useRatings';
 
 interface MovieCardProps {
   movie: Movie;
@@ -14,6 +16,8 @@ interface MovieCardProps {
 
 export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { users, getUserNameById } = useUsers();
+  const { getRatingForUser } = useRatings(movie.imdbId);
 
   const getRatingColor = (rating?: number) => {
     if (!rating) return 'text-muted-foreground';
@@ -22,8 +26,15 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
     return 'text-orange-400';
   };
 
-  const hasRatings = movie.renanRating || movie.brunaRating;
-  const hasComments = movie.renanComments || movie.brunaComments;
+  const hasRatings = users.some(user => {
+    const apiRating = getRatingForUser(user.id);
+    return apiRating && apiRating.rating > 0;
+  });
+  
+  const hasComments = users.some(user => {
+    const apiRating = getRatingForUser(user.id);
+    return apiRating && apiRating.comments;
+  });
 
   return (
     <>
@@ -77,7 +88,7 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
           </p>
           
           {/* Tags */}
-          {movie.tags && movie.tags.length > 0 && (
+          {/* {movie.tags && movie.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-2">
               {movie.tags.slice(0, 3).map((tag) => (
                 <Badge key={tag} variant="outline" className="text-xs border-movie-blue/30">
@@ -90,18 +101,20 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
                 </Badge>
               )}
             </div>
-          )}
+          )} */}
           
           {/* Personal Ratings */}
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground">Renan:</span>
-              <StarRating rating={movie.renanRating || 0} readonly size={12} />
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground">Bruna:</span>
-              <StarRating rating={movie.brunaRating || 0} readonly size={12} />
-            </div>
+            {users.map(user => {
+              const apiRating = getRatingForUser(user.id);
+              const userRating = apiRating ? apiRating.rating : 0;
+              return (
+                <div key={user.id} className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">{user.name}:</span>
+                  <StarRating rating={userRating} readonly size={12} />
+                </div>
+              );
+            })}
           </div>
         </div>
       </Card>

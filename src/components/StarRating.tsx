@@ -1,24 +1,29 @@
 import { Star } from 'lucide-react';
 
 interface StarRatingProps {
-  rating: number;
+  rating: number; // 0-10 scale
   onRatingChange?: (rating: number) => void;
   readonly?: boolean;
   size?: number;
 }
 
 export const StarRating = ({ rating, onRatingChange, readonly = false, size = 20 }: StarRatingProps) => {
+  // Convert 0-10 scale to 0-5 scale for display
+  const displayRating = rating / 2;
+  
   const handleClick = (value: number) => {
     if (!readonly && onRatingChange) {
-      onRatingChange(value);
+      // Convert 0-5 scale back to 0-10 scale with 0.1 precision
+      const newRating = Math.round(value * 2 * 10) / 10; // Round to nearest 0.1
+      onRatingChange(Math.min(10, Math.max(0, newRating))); // Clamp between 0-10
     }
   };
 
   const renderStar = (index: number) => {
     const value = index + 0.5;
     const nextValue = index + 1;
-    const isHalfFilled = rating >= value && rating < nextValue;
-    const isFilled = rating >= nextValue;
+    const isHalfFilled = displayRating >= value && displayRating < nextValue;
+    const isFilled = displayRating >= nextValue;
     
     return (
       <div key={index} className="relative inline-block">
@@ -58,11 +63,11 @@ export const StarRating = ({ rating, onRatingChange, readonly = false, size = 20
   };
 
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1 items-center">
       {[0, 1, 2, 3, 4].map(renderStar)}
       {!readonly && (
         <span className="ml-2 text-sm text-muted-foreground">
-          {rating > 0 ? rating : 'No rating'}
+          {rating > 0 ? rating.toFixed(1) : 'No rating'}
         </span>
       )}
     </div>

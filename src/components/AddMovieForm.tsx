@@ -77,9 +77,10 @@ export const AddMovieForm = ({ onAdd, loading, setLoading }: AddMovieFormProps) 
     <Card className="p-6 bg-gradient-card border-border/50">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <h2 className="text-xl font-semibold text-movie-gold">Add New Movie</h2>
+          <h2 className="text-xl font-semibold text-movie-gold">Add New Movie/Series</h2>
           <p className="text-sm text-muted-foreground">
-            Paste an IMDB URL or ID (e.g., https://www.imdb.com/title/tt1234567/ or tt1234567)
+            {/* Paste an IMDB URL or ID (e.g., https://www.imdb.com/title/tt1234567/ or tt1234567) */}
+            Paste an IMDB URL (e.g., https://www.imdb.com/title/tt1234567/)
           </p>
         </div>
         

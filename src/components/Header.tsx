@@ -1,12 +1,10 @@
-import { Button } from '@/components/ui/button';
-import { Download, Film } from 'lucide-react';
+import { Film } from 'lucide-react';
 
 interface HeaderProps {
-  onExport: () => void;
   movieCount: number;
 }
 
-export const Header = ({ onExport, movieCount }: HeaderProps) => {
+export const Header = ({ movieCount }: HeaderProps) => {
   return (
     <header className="bg-gradient-hero border-b border-border/50">
       <div className="container mx-auto px-4 py-6">
@@ -16,21 +14,13 @@ export const Header = ({ onExport, movieCount }: HeaderProps) => {
               <Film className="w-5 h-5 text-background" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-movie-gold">Renan & Bruna's Movies</h1>
+              <h1 className="text-2xl font-bold text-movie-gold">BruNans' Watchlist</h1>
               <p className="text-sm text-muted-foreground">
                 {movieCount} movie{movieCount !== 1 ? 's' : ''} in your collection
               </p>
             </div>
           </div>
-          
-          <Button
-            onClick={onExport}
-            variant="outline"
-            className="border-movie-gold/30 text-movie-gold hover:bg-movie-gold hover:text-background"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Export CSV
-          </Button>
+
         </div>
       </div>
     </header>

@@ -9,17 +9,34 @@ export interface Movie {
   genre: string;
   director: string;
   actors: string;
-  renanRating?: number;
-  renanComments?: string;
-  brunaRating?: number;
-  brunaComments?: string;
   watched?: boolean;
   tags?: string[];
   addedDate: string;
 }
 
+export interface Rating {
+  id: string;
+  titleId: string;
+  userId: string;
+  note: number;
+  comments: string;
+}
+
+export interface RatingsResponse {
+  ratings: Rating[];
+}
+
+export interface User {
+  id: string;
+  name: string;
+}
+
+export interface UsersResponse {
+  users: User[];
+}
+
 export interface MovieRating {
-  userId: 'renan' | 'bruna';
+  userId: string;
   rating: number;
   comments: string;
 }
