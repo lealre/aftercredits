@@ -125,6 +125,54 @@ export const fetchRatings = async (titleId: string): Promise<Rating[]> => {
   }
 };
 
+export const updateRating = async (ratingId: string, ratingData: {
+  note: number;
+  comments: string;
+}): Promise<Rating> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/ratings/${ratingId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(ratingData),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to update rating');
+    }
+    
+    const rating: Rating = await response.json();
+    return rating;
+  } catch (error) {
+    console.error('Error updating rating:', error);
+    throw error;
+  }
+};
+
+export const saveOrUpdateRating = async (ratingData: {
+  titleId: string;
+  userId: string;
+  note: number;
+  comments: string;
+}, existingRatings: Rating[]): Promise<Rating> => {
+  // Check if rating already exists for this user and movie
+  const existingRating = existingRatings.find(
+    rating => rating.titleId === ratingData.titleId && rating.userId === ratingData.userId
+  );
+
+  if (existingRating) {
+    // Update existing rating
+    return updateRating(existingRating.id, {
+      note: ratingData.note,
+      comments: ratingData.comments,
+    });
+  } else {
+    // Create new rating
+    return saveRating(ratingData);
+  }
+};
+
 export const saveRating = async (ratingData: {
   titleId: string;
   userId: string;

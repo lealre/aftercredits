@@ -7,25 +7,25 @@ export const useRatings = (titleId: string) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadRatings = async () => {
     if (!titleId) return;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const fetchedRatings = await fetchRatings(titleId);
+      setRatings(fetchedRatings);
+    } catch (err) {
+      console.error('Error loading ratings:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load ratings');
+      // If ratings fail to load, just leave empty array (as requested)
+      setRatings([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const loadRatings = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const fetchedRatings = await fetchRatings(titleId);
-        setRatings(fetchedRatings);
-      } catch (err) {
-        console.error('Error loading ratings:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load ratings');
-        // If ratings fail to load, just leave empty array (as requested)
-        setRatings([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
+  useEffect(() => {
     loadRatings();
   }, [titleId]);
 
@@ -48,5 +48,6 @@ export const useRatings = (titleId: string) => {
     error,
     getRatingByUserId,
     getRatingForUser,
+    refreshRatings: loadRatings,
   };
 };

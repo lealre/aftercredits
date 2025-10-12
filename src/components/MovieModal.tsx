@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { useUsers } from '@/hooks/useUsers';
 import { useRatings } from '@/hooks/useRatings';
-import { saveRating } from '@/services/backendService';
+import { saveOrUpdateRating } from '@/services/backendService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -26,12 +26,13 @@ interface MovieModalProps {
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<Movie>) => void;
   onDelete: (id: string) => void;
+  onRefreshRatings?: () => void;
 }
 
-export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete }: MovieModalProps) => {
+export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings }: MovieModalProps) => {
   const { toast } = useToast();
   const { users, getUserNameById } = useUsers();
-  const { getRatingForUser } = useRatings(movie.imdbId);
+  const { getRatingForUser, ratings, refreshRatings } = useRatings(movie.imdbId);
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number; comments: string }>>({});
   const [watched, setWatched] = useState(movie.watched || false);
   const [tags, setTags] = useState<string[]>(movie.tags || []);
@@ -50,17 +51,33 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete }: Movie
   };
 
   const updateUserRating = (userId: string, rating: number) => {
-    setUserRatings(prev => ({
-      ...prev,
-      [userId]: { ...prev[userId], rating }
-    }));
+    setUserRatings(prev => {
+      const existingComments = prev[userId]?.comments;
+      const apiRating = getRatingForUser(userId);
+      
+      return {
+        ...prev,
+        [userId]: { 
+          rating,
+          comments: existingComments !== undefined ? existingComments : (apiRating?.comments || '')
+        }
+      };
+    });
   };
 
   const updateUserComments = (userId: string, comments: string) => {
-    setUserRatings(prev => ({
-      ...prev,
-      [userId]: { ...prev[userId], comments }
-    }));
+    setUserRatings(prev => {
+      const existingRating = prev[userId]?.rating;
+      const apiRating = getRatingForUser(userId);
+      
+      return {
+        ...prev,
+        [userId]: { 
+          rating: existingRating !== undefined ? existingRating : (apiRating?.rating || 0), 
+          comments 
+        }
+      };
+    });
   };
 
   const getUserRating = (userId: string) => {
@@ -90,17 +107,25 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete }: Movie
       if (Object.keys(userRatings).length > 0) {
         const savePromises = Object.entries(userRatings).map(async ([userId, ratingData]) => {
           if (ratingData.rating > 0 || ratingData.comments.trim()) {
-            return saveRating({
+            return saveOrUpdateRating({
               titleId: movie.imdbId,
               userId: userId,
               note: ratingData.rating,
               comments: ratingData.comments,
-            });
+            }, ratings);
           }
           return null;
         });
 
         await Promise.all(savePromises.filter(Boolean));
+        
+        // Refresh ratings to get the latest data
+        await refreshRatings();
+        
+        // Also refresh ratings in the parent component (MovieCard)
+        if (onRefreshRatings) {
+          onRefreshRatings();
+        }
         
         // Clear local ratings after successful save
         setUserRatings({});

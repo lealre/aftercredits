@@ -17,7 +17,7 @@ interface MovieCardProps {
 export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { users, getUserNameById } = useUsers();
-  const { getRatingForUser } = useRatings(movie.imdbId);
+  const { getRatingForUser, refreshRatings } = useRatings(movie.imdbId);
 
   const getRatingColor = (rating?: number) => {
     if (!rating) return 'text-muted-foreground';
@@ -72,11 +72,11 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
 
 
           {/* Comments Indicator */}
-          {hasComments && (
+          {/* {hasComments && (
             <div className="absolute bottom-3 right-3 opacity-70">
               <MessageCircle className="w-4 h-4 text-movie-blue" />
             </div>
-          )}
+          )} */}
         </div>
 
         <div className="p-4">
@@ -125,6 +125,7 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
         onClose={() => setIsModalOpen(false)}
         onUpdate={onUpdate}
         onDelete={onDelete}
+        onRefreshRatings={refreshRatings}
       />
     </>
   );
