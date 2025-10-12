@@ -221,10 +221,26 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                   <h3 className="text-lg font-semibold text-movie-blue">{user.name}'s Rating</h3>
                   <div className="space-y-2">
                     <Label>Rating (0-10 scale)</Label>
-                    <StarRating 
-                      rating={getUserRating(user.id)} 
-                      onRatingChange={(rating) => updateUserRating(user.id, rating)}
-                    />
+                    <div className="flex items-center gap-3">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={getUserRating(user.id) || 0}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value) || 0;
+                          updateUserRating(user.id, Math.min(10, Math.max(0, value)));
+                        }}
+                        className="w-20 bg-movie-surface border-border"
+                        placeholder="0.0"
+                      />
+                      <StarRating 
+                        rating={getUserRating(user.id)} 
+                        readonly={true}
+                        size={24}
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor={`${user.id}-comments`}>Comments</Label>

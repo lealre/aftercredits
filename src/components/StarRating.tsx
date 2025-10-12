@@ -20,10 +20,9 @@ export const StarRating = ({ rating, onRatingChange, readonly = false, size = 20
   };
 
   const renderStar = (index: number) => {
-    const value = index + 0.5;
-    const nextValue = index + 1;
-    const isHalfFilled = displayRating >= value && displayRating < nextValue;
-    const isFilled = displayRating >= nextValue;
+    const starStart = index;
+    const starEnd = index + 1;
+    const fillPercentage = Math.max(0, Math.min(1, displayRating - starStart));
     
     return (
       <div key={index} className="relative inline-block">
@@ -34,13 +33,13 @@ export const StarRating = ({ rating, onRatingChange, readonly = false, size = 20
           onClick={() => !readonly && handleClick(0)}
         />
         
-        {/* Half fill */}
-        {(isHalfFilled || isFilled) && (
-          <div className="absolute inset-0 overflow-hidden" style={{ width: isHalfFilled ? '50%' : '100%' }}>
+        {/* Proportional fill */}
+        {fillPercentage > 0 && (
+          <div className="absolute inset-0 overflow-hidden" style={{ width: `${fillPercentage * 100}%` }}>
             <Star
               size={size}
               className={`text-movie-blue fill-movie-blue ${readonly ? '' : 'cursor-pointer hover:text-movie-blue-light'}`}
-              onClick={() => !readonly && handleClick(isHalfFilled ? value : nextValue)}
+              onClick={() => !readonly && handleClick(starStart + fillPercentage)}
             />
           </div>
         )}
@@ -50,11 +49,11 @@ export const StarRating = ({ rating, onRatingChange, readonly = false, size = 20
           <>
             <div
               className="absolute inset-0 w-1/2 cursor-pointer"
-              onClick={() => handleClick(value)}
+              onClick={() => handleClick(starStart + 0.5)}
             />
             <div
               className="absolute inset-0 left-1/2 w-1/2 cursor-pointer"
-              onClick={() => handleClick(nextValue)}
+              onClick={() => handleClick(starEnd)}
             />
           </>
         )}
@@ -67,7 +66,7 @@ export const StarRating = ({ rating, onRatingChange, readonly = false, size = 20
       {[0, 1, 2, 3, 4].map(renderStar)}
       {!readonly && (
         <span className="ml-2 text-sm text-muted-foreground">
-          {rating > 0 ? rating.toFixed(1) : 'No rating'}
+          {rating > 0 ? rating.toFixed(1) : '0.0'}
         </span>
       )}
     </div>

@@ -95,7 +95,7 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
               return (
                 <div key={user.id} className="flex items-center gap-2 text-xs">
                   <span className="text-muted-foreground">{user.name}:</span>
-                  <StarRating rating={userRating} readonly size={12} />
+                  <StarRating rating={userRating} readonly size={16} />
                 </div>
               );
             })}
