@@ -22,6 +22,7 @@ interface BackendMovie {
   writersNames: string[];
   starsNames: string[];
   originCountries: string[];
+  watched: boolean;
 }
 
 interface BackendResponse {
@@ -46,7 +47,7 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
     director: backendMovie.directorsNames.join(', '),
     actors: backendMovie.starsNames.join(', '),
     addedDate: new Date().toISOString().split('T')[0],
-    watched: false,
+    watched: backendMovie.watched,
   };
 };
 
@@ -195,6 +196,25 @@ export const saveRating = async (ratingData: {
     return rating;
   } catch (error) {
     console.error('Error saving rating:', error);
+    throw error;
+  }
+};
+
+export const updateMovieWatchedStatus = async (imdbId: string, watched: boolean): Promise<void> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/titles/${imdbId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ watched }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to update watched status');
+    }
+  } catch (error) {
+    console.error('Error updating watched status:', error);
     throw error;
   }
 };

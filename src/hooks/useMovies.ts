@@ -6,20 +6,20 @@ export const useMovies = () => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const loadMovies = async () => {
-      setLoading(true);
-      try {
-        // Fetch movies from backend only
-        const fetchedMovies = await fetchMovies();
-        setMovies(fetchedMovies);
-      } catch (error) {
-        console.error('Error loading movies:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const loadMovies = async () => {
+    setLoading(true);
+    try {
+      // Fetch movies from backend only
+      const fetchedMovies = await fetchMovies();
+      setMovies(fetchedMovies);
+    } catch (error) {
+      console.error('Error loading movies:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadMovies();
   }, []);
 
@@ -40,6 +40,10 @@ export const useMovies = () => {
     setMovies(newMovies);
   };
 
+  const refreshMovies = async () => {
+    await loadMovies();
+  };
+
   return {
     movies,
     loading,
@@ -47,5 +51,6 @@ export const useMovies = () => {
     addMovie,
     updateMovie,
     deleteMovie,
+    refreshMovies,
   };
 };

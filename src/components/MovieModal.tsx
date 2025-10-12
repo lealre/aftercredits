@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { useUsers } from '@/hooks/useUsers';
 import { useRatings } from '@/hooks/useRatings';
-import { saveOrUpdateRating } from '@/services/backendService';
+import { saveOrUpdateRating, updateMovieWatchedStatus } from '@/services/backendService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -27,9 +27,10 @@ interface MovieModalProps {
   onUpdate: (id: string, updates: Partial<Movie>) => void;
   onDelete: (id: string) => void;
   onRefreshRatings?: () => void;
+  onRefreshMovies?: () => void;
 }
 
-export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings }: MovieModalProps) => {
+export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies }: MovieModalProps) => {
   const { toast } = useToast();
   const { users, getUserNameById } = useUsers();
   const { getRatingForUser, ratings, refreshRatings } = useRatings(movie.imdbId);
@@ -93,7 +94,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       // Save ratings first if there are any
       if (Object.keys(userRatings).length > 0) {
         const savePromises = Object.entries(userRatings).map(async ([userId, ratingData]) => {
-          if (ratingData.rating > 0 || ratingData.comments.trim()) {
+          if (ratingData.rating >= 0 || ratingData.comments.trim()) {
             return saveOrUpdateRating({
               titleId: movie.imdbId,
               userId: userId,
@@ -118,7 +119,17 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         setUserRatings({});
       }
 
-      // Save movie updates
+      // Update watched status if it changed
+      if (watched !== movie.watched) {
+        await updateMovieWatchedStatus(movie.imdbId, watched);
+        
+        // Refresh movies to get the latest data from backend
+        if (onRefreshMovies) {
+          await onRefreshMovies();
+        }
+      }
+
+      // Save movie updates locally
       const updates: Partial<Movie> = {
         watched
       };
@@ -227,10 +238,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         min="0"
                         max="10"
                         step="0.1"
-                        value={getUserRating(user.id) || 0}
+                        value={getUserRating(user.id)}
                         onChange={(e) => {
-                          const value = parseFloat(e.target.value) || 0;
-                          updateUserRating(user.id, Math.min(10, Math.max(0, value)));
+                          const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                          if (!isNaN(value)) {
+                            updateUserRating(user.id, Math.min(10, Math.max(0, value)));
+                          }
                         }}
                         className="w-20 bg-movie-surface border-border"
                         placeholder="0.0"

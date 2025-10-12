@@ -5,9 +5,10 @@ interface MovieGridProps {
   movies: Movie[];
   onUpdate: (id: string, updates: Partial<Movie>) => void;
   onDelete: (id: string) => void;
+  onRefreshMovies?: () => void;
 }
 
-export const MovieGrid = ({ movies, onUpdate, onDelete }: MovieGridProps) => {
+export const MovieGrid = ({ movies, onUpdate, onDelete, onRefreshMovies }: MovieGridProps) => {
   if (movies.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -31,6 +32,7 @@ export const MovieGrid = ({ movies, onUpdate, onDelete }: MovieGridProps) => {
           movie={movie}
           onUpdate={onUpdate}
           onDelete={onDelete}
+          onRefreshMovies={onRefreshMovies}
         />
       ))}
     </div>

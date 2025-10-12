@@ -12,9 +12,10 @@ interface MovieCardProps {
   movie: Movie;
   onUpdate: (id: string, updates: Partial<Movie>) => void;
   onDelete: (id: string) => void;
+  onRefreshMovies?: () => void;
 }
 
-export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
+export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies }: MovieCardProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { users, getUserNameById } = useUsers();
   const { getRatingForUser, refreshRatings } = useRatings(movie.imdbId);
@@ -110,6 +111,7 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
         onUpdate={onUpdate}
         onDelete={onDelete}
         onRefreshRatings={refreshRatings}
+        onRefreshMovies={onRefreshMovies}
       />
     </>
   );

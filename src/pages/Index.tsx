@@ -6,7 +6,7 @@ import { MovieGrid } from '@/components/MovieGrid';
 import { FilterControls } from '@/components/FilterControls';
 
 const Index = () => {
-  const { movies, loading, setLoading, addMovie, updateMovie, deleteMovie } = useMovies();
+  const { movies, loading, setLoading, addMovie, updateMovie, deleteMovie, refreshMovies } = useMovies();
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
 
   const filteredMovies = movies.filter(movie => {
@@ -36,6 +36,7 @@ const Index = () => {
           movies={filteredMovies} 
           onUpdate={updateMovie} 
           onDelete={deleteMovie} 
+          onRefreshMovies={refreshMovies}
         />
       </main>
     </div>
