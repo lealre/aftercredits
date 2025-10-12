@@ -35,20 +35,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const { getRatingForUser, ratings, refreshRatings } = useRatings(movie.imdbId);
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number; comments: string }>>({});
   const [watched, setWatched] = useState(movie.watched || false);
-  const [tags, setTags] = useState<string[]>(movie.tags || []);
-  const [newTag, setNewTag] = useState('');
   const [saving, setSaving] = useState(false);
-
-  const handleAddTag = () => {
-    if (newTag.trim() && !newTag.includes(' ') && !tags.includes(newTag.trim())) {
-      setTags([...tags, newTag.trim()]);
-      setNewTag('');
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setTags(tags.filter(tag => tag !== tagToRemove));
-  };
 
   const updateUserRating = (userId: string, rating: number) => {
     setUserRatings(prev => {
@@ -133,8 +120,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
       // Save movie updates
       const updates: Partial<Movie> = {
-        watched,
-        tags: tags.length > 0 ? tags : undefined,
+        watched
       };
       
       onUpdate(movie.id, updates);
@@ -213,7 +199,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
             </div>
           </div>
 
-          {/* Movie Status and Tags */}
+          {/* Movie Status */}
           <div className="space-y-6">
             {/* Watched Status */}
             <div className="space-y-3">
@@ -226,38 +212,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 <Label htmlFor="watched">Watched</Label>
               </div>
             </div>
-
-            {/* Tags */}
-            {/* <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-movie-blue">Tags</h3>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="bg-movie-surface border-movie-blue/30">
-                    {tag}
-                    <button
-                      onClick={() => handleRemoveTag(tag)}
-                      className="ml-1 hover:text-destructive"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  placeholder="Add tag (no spaces)"
-                  className="bg-movie-surface border-border"
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
-                />
-                <Button onClick={handleAddTag} size="sm" variant="outline">
-                  Add
-                </Button>
-              </div>
-            </div>
-
-            <Separator className="bg-border" /> */}
 
             {/* User Ratings */}
             {users.map((user, index) => (

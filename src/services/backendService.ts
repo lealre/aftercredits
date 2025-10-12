@@ -47,7 +47,6 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
     actors: backendMovie.starsNames.join(', '),
     addedDate: new Date().toISOString().split('T')[0],
     watched: false,
-    tags: [],
   };
 };
 

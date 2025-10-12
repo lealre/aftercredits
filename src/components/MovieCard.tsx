@@ -87,22 +87,6 @@ export const MovieCard = ({ movie, onUpdate, onDelete }: MovieCardProps) => {
             {movie.year} • {movie.genre}
           </p>
           
-          {/* Tags */}
-          {/* {movie.tags && movie.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-2">
-              {movie.tags.slice(0, 3).map((tag) => (
-                <Badge key={tag} variant="outline" className="text-xs border-movie-blue/30">
-                  {tag}
-                </Badge>
-              ))}
-              {movie.tags.length > 3 && (
-                <Badge variant="outline" className="text-xs border-movie-blue/30">
-                  +{movie.tags.length - 3}
-                </Badge>
-              )}
-            </div>
-          )} */}
-          
           {/* Personal Ratings */}
           <div className="space-y-1">
             {users.map(user => {

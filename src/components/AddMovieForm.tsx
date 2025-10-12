@@ -49,7 +49,6 @@ export const AddMovieForm = ({ onAdd, loading, setLoading }: AddMovieFormProps) 
           actors: result.movie.starsNames.join(', '),
           addedDate: new Date().toISOString().split('T')[0],
           watched: false,
-          tags: [],
         };
 
         onAdd(movie);

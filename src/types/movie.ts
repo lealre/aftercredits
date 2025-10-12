@@ -10,7 +10,6 @@ export interface Movie {
   director: string;
   actors: string;
   watched?: boolean;
-  tags?: string[];
   addedDate: string;
 }
 
