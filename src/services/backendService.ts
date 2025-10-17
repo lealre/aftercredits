@@ -218,3 +218,18 @@ export const updateMovieWatchedStatus = async (imdbId: string, watched: boolean)
     throw error;
   }
 };
+
+export const deleteMovie = async (imdbId: string): Promise<void> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/titles/${imdbId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete movie');
+    }
+  } catch (error) {
+    console.error('Error deleting movie:', error);
+    throw error;
+  }
+};

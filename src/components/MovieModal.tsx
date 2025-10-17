@@ -16,8 +16,9 @@ import { Switch } from '@/components/ui/switch';
 import { Star, Trash2, ExternalLink, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { useRatings } from '@/hooks/useRatings';
-import { saveOrUpdateRating, updateMovieWatchedStatus } from '@/services/backendService';
+import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie } from '@/services/backendService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -37,6 +38,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number; comments: string }>>({});
   const [watched, setWatched] = useState(movie.watched || false);
   const [saving, setSaving] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const updateUserRating = (userId: string, rating: number) => {
     setUserRatings(prev => {
@@ -153,15 +156,41 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     }
   };
 
-  const handleDelete = () => {
-    if (window.confirm('Are you sure you want to delete this movie?')) {
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    setDeleting(true);
+    try {
+      // Delete from backend
+      await deleteMovie(movie.imdbId);
+      
+      // Update local state
       onDelete(movie.id);
+      
       toast({
         title: "Movie deleted",
         description: `"${movie.title}" has been removed from your list.`,
       });
+      
+      // Close both modals
+      setShowDeleteModal(false);
       onClose();
+    } catch (error) {
+      console.error('Error deleting movie:', error);
+      toast({
+        title: "Error deleting movie",
+        description: "Failed to delete movie. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteModal(false);
   };
 
   return (
@@ -282,7 +311,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               <Button 
                 variant="destructive" 
                 size="icon"
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
                 className="shrink-0"
               >
                 <Trash2 className="w-4 h-4" />
@@ -291,6 +320,14 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
           </div>
         </div>
       </DialogContent>
+      
+      <DeleteConfirmationModal
+        movie={movie}
+        isOpen={showDeleteModal}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        loading={deleting}
+      />
     </Dialog>
   );
 };
