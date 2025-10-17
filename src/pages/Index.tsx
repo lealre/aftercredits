@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMovies } from '@/hooks/useMovies';
+import { useUsers } from '@/hooks/useUsers';
 import { Header } from '@/components/Header';
 import { AddMovieForm } from '@/components/AddMovieForm';
 import { MovieGrid } from '@/components/MovieGrid';
@@ -7,6 +8,7 @@ import { FilterControls } from '@/components/FilterControls';
 
 const Index = () => {
   const { movies, loading, setLoading, addMovie, updateMovie, deleteMovie, refreshMovies } = useMovies();
+  const { users, getUserNameById } = useUsers();
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
 
   const filteredMovies = movies.filter(movie => {
@@ -37,6 +39,8 @@ const Index = () => {
           onUpdate={updateMovie} 
           onDelete={deleteMovie} 
           onRefreshMovies={refreshMovies}
+          users={users}
+          getUserNameById={getUserNameById}
         />
       </main>
     </div>

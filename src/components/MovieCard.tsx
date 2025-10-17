@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { Movie } from '@/types/movie';
+import { Movie, User } from '@/types/movie';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Star, MessageCircle, Eye, EyeOff } from 'lucide-react';
 import { MovieModal } from './MovieModal';
 import { StarRating } from './StarRating';
-import { useUsers } from '@/hooks/useUsers';
 import { useRatings } from '@/hooks/useRatings';
 
 interface MovieCardProps {
@@ -13,11 +12,12 @@ interface MovieCardProps {
   onUpdate: (id: string, updates: Partial<Movie>) => void;
   onDelete: (id: string) => void;
   onRefreshMovies?: () => void;
+  users: User[];
+  getUserNameById: (userId: string) => string;
 }
 
-export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies }: MovieCardProps) => {
+export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies, users, getUserNameById }: MovieCardProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { users, getUserNameById } = useUsers();
   const { getRatingForUser, refreshRatings } = useRatings(movie.imdbId);
 
   const getRatingColor = (rating?: number) => {
@@ -112,6 +112,8 @@ export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies }: MovieC
         onDelete={onDelete}
         onRefreshRatings={refreshRatings}
         onRefreshMovies={onRefreshMovies}
+        users={users}
+        getUserNameById={getUserNameById}
       />
     </>
   );

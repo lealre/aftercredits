@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Movie } from '@/types/movie';
+import { Movie, User } from '@/types/movie';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,6 @@ import { Switch } from '@/components/ui/switch';
 import { Star, Trash2, ExternalLink, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
-import { useUsers } from '@/hooks/useUsers';
 import { useRatings } from '@/hooks/useRatings';
 import { saveOrUpdateRating, updateMovieWatchedStatus } from '@/services/backendService';
 
@@ -28,11 +27,12 @@ interface MovieModalProps {
   onDelete: (id: string) => void;
   onRefreshRatings?: () => void;
   onRefreshMovies?: () => void;
+  users: User[];
+  getUserNameById: (userId: string) => string;
 }
 
-export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies }: MovieModalProps) => {
+export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById }: MovieModalProps) => {
   const { toast } = useToast();
-  const { users, getUserNameById } = useUsers();
   const { getRatingForUser, ratings, refreshRatings } = useRatings(movie.imdbId);
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number; comments: string }>>({});
   const [watched, setWatched] = useState(movie.watched || false);

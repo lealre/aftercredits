@@ -1,4 +1,4 @@
-import { Movie } from '@/types/movie';
+import { Movie, User } from '@/types/movie';
 import { MovieCard } from './MovieCard';
 
 interface MovieGridProps {
@@ -6,9 +6,11 @@ interface MovieGridProps {
   onUpdate: (id: string, updates: Partial<Movie>) => void;
   onDelete: (id: string) => void;
   onRefreshMovies?: () => void;
+  users: User[];
+  getUserNameById: (userId: string) => string;
 }
 
-export const MovieGrid = ({ movies, onUpdate, onDelete, onRefreshMovies }: MovieGridProps) => {
+export const MovieGrid = ({ movies, onUpdate, onDelete, onRefreshMovies, users, getUserNameById }: MovieGridProps) => {
   if (movies.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -33,6 +35,8 @@ export const MovieGrid = ({ movies, onUpdate, onDelete, onRefreshMovies }: Movie
           onUpdate={onUpdate}
           onDelete={onDelete}
           onRefreshMovies={onRefreshMovies}
+          users={users}
+          getUserNameById={getUserNameById}
         />
       ))}
     </div>
