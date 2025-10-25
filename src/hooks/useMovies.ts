@@ -1,17 +1,28 @@
 import { useState, useEffect } from 'react';
-import { Movie } from '@/types/movie';
+import { Movie, PaginatedResponse, PaginationParams } from '@/types/movie';
 import { fetchMovies } from '@/services/backendService';
 
 export const useMovies = () => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    size: 20,
+    totalPages: 0,
+    totalResults: 0,
+  });
 
-  const loadMovies = async () => {
+  const loadMovies = async (paginationParams?: PaginationParams) => {
     setLoading(true);
     try {
-      // Fetch movies from backend only
-      const fetchedMovies = await fetchMovies();
-      setMovies(fetchedMovies);
+      const response = await fetchMovies(paginationParams);
+      setMovies(response.Content);
+      setPagination({
+        page: response.Page,
+        size: response.Size,
+        totalPages: response.TotalPages,
+        totalResults: response.TotalResults,
+      });
     } catch (error) {
       console.error('Error loading movies:', error);
     } finally {
@@ -20,7 +31,7 @@ export const useMovies = () => {
   };
 
   useEffect(() => {
-    loadMovies();
+    loadMovies({ page: 1, size: 20 });
   }, []);
 
   const addMovie = (movie: Movie) => {
@@ -41,16 +52,27 @@ export const useMovies = () => {
   };
 
   const refreshMovies = async () => {
-    await loadMovies();
+    await loadMovies({ page: pagination.page, size: pagination.size });
+  };
+
+  const changePage = (page: number) => {
+    loadMovies({ page, size: pagination.size });
+  };
+
+  const changePageSize = (size: number) => {
+    loadMovies({ page: 1, size });
   };
 
   return {
     movies,
     loading,
     setLoading,
+    pagination,
     addMovie,
     updateMovie,
     deleteMovie,
     refreshMovies,
+    changePage,
+    changePageSize,
   };
 };

@@ -39,3 +39,16 @@ export interface MovieRating {
   rating: number;
   comments: string;
 }
+
+export interface PaginatedResponse<T> {
+  Page: number;
+  Size: number;
+  TotalPages: number;
+  TotalResults: number;
+  Content: T[];
+}
+
+export interface PaginationParams {
+  page: number;
+  size: number;
+}

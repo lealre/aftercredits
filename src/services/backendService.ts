@@ -1,4 +1,4 @@
-import { Movie, User, UsersResponse, Rating, RatingsResponse } from '@/types/movie';
+import { Movie, User, UsersResponse, Rating, RatingsResponse, PaginatedResponse, PaginationParams } from '@/types/movie';
 
 const API_BASE_URL = '/api';
 
@@ -29,6 +29,14 @@ interface BackendResponse {
   movies: BackendMovie[];
 }
 
+interface BackendPaginatedResponse {
+  Page: number;
+  Size: number;
+  TotalPages: number;
+  TotalResults: number;
+  Content: BackendMovie[];
+}
+
 interface AddMovieResponse {
   error_message?: string;
   status_code?: string;
@@ -51,19 +59,35 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
   };
 };
 
-export const fetchMovies = async (): Promise<Movie[]> => {
+export const fetchMovies = async (paginationParams?: PaginationParams): Promise<PaginatedResponse<Movie>> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/titles`);
+    let url = `${API_BASE_URL}/titles`;
+    
+    if (paginationParams) {
+      const searchParams = new URLSearchParams({
+        page: paginationParams.page.toString(),
+        size: paginationParams.size.toString(),
+      });
+      url += `?${searchParams.toString()}`;
+    }
+    
+    const response = await fetch(url);
     
     if (!response.ok) {
       throw new Error('Failed to fetch movies from backend');
     }
     
-    const data: BackendResponse = await response.json();
+    const data: BackendPaginatedResponse = await response.json();
     
-    return data.movies.map(movie => 
-      mapBackendMovieToMovie(movie)
-    );
+    return {
+      Page: data.Page,
+      Size: data.Size,
+      TotalPages: data.TotalPages,
+      TotalResults: data.TotalResults,
+      Content: data.Content.map(movie => 
+        mapBackendMovieToMovie(movie)
+      ),
+    };
   } catch (error) {
     console.error('Error fetching movies:', error);
     throw error;

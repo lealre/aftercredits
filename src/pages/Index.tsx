@@ -7,7 +7,18 @@ import { MovieGrid } from '@/components/MovieGrid';
 import { FilterControls } from '@/components/FilterControls';
 
 const Index = () => {
-  const { movies, loading, setLoading, addMovie, updateMovie, deleteMovie, refreshMovies } = useMovies();
+  const { 
+    movies, 
+    loading, 
+    setLoading, 
+    pagination,
+    addMovie, 
+    updateMovie, 
+    deleteMovie, 
+    refreshMovies,
+    changePage,
+    changePageSize
+  } = useMovies();
   const { users, getUserNameById } = useUsers();
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
 
@@ -19,7 +30,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-hero">
-      <Header movieCount={movies.length} />
+      <Header movieCount={pagination?.totalResults || movies.length} />
       
       <main className="container mx-auto px-4 py-8 space-y-8">
         <AddMovieForm 
@@ -41,6 +52,10 @@ const Index = () => {
           onRefreshMovies={refreshMovies}
           users={users}
           getUserNameById={getUserNameById}
+          pagination={pagination}
+          onPageChange={changePage}
+          onPageSizeChange={changePageSize}
+          loading={loading}
         />
       </main>
     </div>
