@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { Star, Trash2, ExternalLink, X } from 'lucide-react';
+import { Star, Trash2, ExternalLink, X, Edit3, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
@@ -37,6 +37,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const { getRatingForUser, ratings, refreshRatings } = useRatings(movie.imdbId);
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number; comments: string }>>({});
   const [watched, setWatched] = useState(movie.watched || false);
+  const [watchedAt, setWatchedAt] = useState(movie.watchedAt || '');
+  const [isEditingWatchedAt, setIsEditingWatchedAt] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -123,8 +125,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }
 
       // Update watched status if it changed
-      if (watched !== movie.watched) {
-        await updateMovieWatchedStatus(movie.imdbId, watched);
+      if (watched !== movie.watched || watchedAt !== movie.watchedAt) {
+        await updateMovieWatchedStatus(movie.imdbId, watched, watchedAt || undefined);
         
         // Refresh movies to get the latest data from backend
         if (onRefreshMovies) {
@@ -134,7 +136,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
       // Save movie updates locally
       const updates: Partial<Movie> = {
-        watched
+        watched,
+        watchedAt: watchedAt || undefined
       };
       
       onUpdate(movie.id, updates);
@@ -191,6 +194,35 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
   const handleDeleteCancel = () => {
     setShowDeleteModal(false);
+  };
+
+  const handleDeleteWatchedDate = async () => {
+    if (window.confirm('Are you sure you want to delete the watched date?')) {
+      try {
+        await updateMovieWatchedStatus(movie.imdbId, watched, '');
+        setWatchedAt('');
+        
+        // Refresh movies to get the latest data from backend
+        if (onRefreshMovies) {
+          await onRefreshMovies();
+        }
+        
+        // Update local state
+        onUpdate(movie.id, { watchedAt: '' });
+        
+        toast({
+          title: "Date deleted!",
+          description: "Watched date has been removed.",
+        });
+      } catch (error) {
+        console.error('Error deleting watched date:', error);
+        toast({
+          title: "Error",
+          description: "Failed to delete watched date. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
   };
 
   return (
@@ -251,6 +283,56 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 />
                 <Label htmlFor="watched">Watched</Label>
               </div>
+              
+              {/* Watched Date */}
+              {watched && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm text-muted-foreground">Watched on:</Label>
+                    <div className="flex items-center space-x-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsEditingWatchedAt(!isEditingWatchedAt)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <Edit3 className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleDeleteWatchedDate}
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                      >
+                        <XCircle className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {isEditingWatchedAt ? (
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        type="date"
+                        value={watchedAt}
+                        onChange={(e) => setWatchedAt(e.target.value)}
+                        className="text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsEditingWatchedAt(false)}
+                        className="h-8 px-2"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-foreground">
+                      {watchedAt ? new Date(watchedAt).toLocaleDateString() : 'No date set'}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* User Ratings */}

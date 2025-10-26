@@ -52,7 +52,7 @@ export const Pagination = ({
 
   if (totalPages <= 1) {
     return (
-      <div className="flex items-center justify-between px-2">
+      <div className="flex items-center justify-between px-2 gap-4">
         <div className="flex items-center space-x-2">
           <p className="text-sm text-muted-foreground">
             Showing {totalResults} result{totalResults !== 1 ? 's' : ''}

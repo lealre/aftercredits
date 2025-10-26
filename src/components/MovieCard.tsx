@@ -88,6 +88,13 @@ export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies, users, g
             {movie.year} • {movie.genre}
           </p>
           
+          {/* Watched Date */}
+          {movie.watched && movie.watchedAt && (
+            <p className="text-xs text-movie-rating mb-2">
+              Watched on {new Date(movie.watchedAt).toLocaleDateString()}
+            </p>
+          )}
+          
           {/* Personal Ratings */}
           <div className="space-y-1">
             {users.map(user => {

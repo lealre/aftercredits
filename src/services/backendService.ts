@@ -23,6 +23,7 @@ interface BackendMovie {
   starsNames: string[];
   originCountries: string[];
   watched: boolean;
+  watchedAt?: string;
 }
 
 interface BackendResponse {
@@ -56,6 +57,7 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
     actors: backendMovie.starsNames.join(', '),
     addedDate: new Date().toISOString().split('T')[0],
     watched: backendMovie.watched,
+    watchedAt: backendMovie.watchedAt,
   };
 };
 
@@ -224,14 +226,19 @@ export const saveRating = async (ratingData: {
   }
 };
 
-export const updateMovieWatchedStatus = async (imdbId: string, watched: boolean): Promise<void> => {
+export const updateMovieWatchedStatus = async (imdbId: string, watched: boolean, watchedAt?: string): Promise<void> => {
   try {
+    const body: { watched: boolean; watchedAt?: string } = { watched };
+    if (watchedAt) {
+      body.watchedAt = watchedAt;
+    }
+    
     const response = await fetch(`${API_BASE_URL}/titles/${imdbId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ watched }),
+      body: JSON.stringify(body),
     });
     
     if (!response.ok) {
