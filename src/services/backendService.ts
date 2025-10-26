@@ -70,6 +70,12 @@ export const fetchMovies = async (paginationParams?: PaginationParams): Promise<
         page: paginationParams.page.toString(),
         size: paginationParams.size.toString(),
       });
+      
+      // Only add watched parameter if it's explicitly provided (true or false)
+      if (paginationParams.watched !== undefined) {
+        searchParams.append('watched', paginationParams.watched.toString());
+      }
+      
       url += `?${searchParams.toString()}`;
     }
     

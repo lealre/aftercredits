@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Movie, PaginatedResponse, PaginationParams } from '@/types/movie';
 import { fetchMovies } from '@/services/backendService';
 
-export const useMovies = () => {
+export const useMovies = (watchedFilter?: boolean) => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({
@@ -15,7 +15,19 @@ export const useMovies = () => {
   const loadMovies = async (paginationParams?: PaginationParams) => {
     setLoading(true);
     try {
-      const response = await fetchMovies(paginationParams);
+      // Use provided params or defaults, ensuring watched filter is always included
+      const params: PaginationParams = paginationParams || { 
+        page: 1, 
+        size: 20, 
+        watched: watchedFilter 
+      };
+      
+      // If watched wasn't explicitly provided, use the hook's filter
+      if (params.watched === undefined) {
+        params.watched = watchedFilter;
+      }
+      
+      const response = await fetchMovies(params);
       setMovies(response.Content);
       setPagination({
         page: response.Page,
@@ -31,8 +43,8 @@ export const useMovies = () => {
   };
 
   useEffect(() => {
-    loadMovies({ page: 1, size: 20 });
-  }, []);
+    loadMovies({ page: 1, size: 20, watched: watchedFilter });
+  }, [watchedFilter]);
 
   const addMovie = (movie: Movie) => {
     const newMovies = [...movies, movie];
@@ -52,15 +64,15 @@ export const useMovies = () => {
   };
 
   const refreshMovies = async () => {
-    await loadMovies({ page: pagination.page, size: pagination.size });
+    await loadMovies({ page: pagination.page, size: pagination.size, watched: watchedFilter });
   };
 
   const changePage = (page: number) => {
-    loadMovies({ page, size: pagination.size });
+    loadMovies({ page, size: pagination.size, watched: watchedFilter });
   };
 
   const changePageSize = (size: number) => {
-    loadMovies({ page: 1, size });
+    loadMovies({ page: 1, size, watched: watchedFilter });
   };
 
   return {

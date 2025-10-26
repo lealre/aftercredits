@@ -7,6 +7,11 @@ import { MovieGrid } from '@/components/MovieGrid';
 import { FilterControls } from '@/components/FilterControls';
 
 const Index = () => {
+  const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
+  
+  // Convert filter to boolean or undefined for the API
+  const watchedFilterValue = watchedFilter === 'all' ? undefined : watchedFilter === 'watched';
+  
   const { 
     movies, 
     loading, 
@@ -18,15 +23,8 @@ const Index = () => {
     refreshMovies,
     changePage,
     changePageSize
-  } = useMovies();
+  } = useMovies(watchedFilterValue);
   const { users, getUserNameById } = useUsers();
-  const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
-
-  const filteredMovies = movies.filter(movie => {
-    if (watchedFilter === 'watched') return movie.watched;
-    if (watchedFilter === 'unwatched') return !movie.watched;
-    return true;
-  });
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -42,11 +40,11 @@ const Index = () => {
         <FilterControls
           watchedFilter={watchedFilter}
           onWatchedFilterChange={setWatchedFilter}
-          movieCount={filteredMovies.length}
+          movieCount={pagination.totalResults}
         />
         
         <MovieGrid 
-          movies={filteredMovies} 
+          movies={movies} 
           onUpdate={updateMovie} 
           onDelete={deleteMovie} 
           onRefreshMovies={refreshMovies}
