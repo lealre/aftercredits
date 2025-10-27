@@ -9,6 +9,8 @@ export interface Movie {
   genre: string;
   director: string;
   actors: string;
+  type: string;
+  runtimeSeconds?: number;
   watched?: boolean;
   watchedAt?: string;
   addedDate: string;

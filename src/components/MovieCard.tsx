@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { Movie, User } from '@/types/movie';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Star, MessageCircle, Eye, EyeOff } from 'lucide-react';
-import { MovieModal } from './MovieModal';
-import { StarRating } from './StarRating';
-import { useRatings } from '@/hooks/useRatings';
+import { useState } from "react";
+import { Movie, User } from "@/types/movie";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Star, MessageCircle, Eye, EyeOff } from "lucide-react";
+import { MovieModal } from "./MovieModal";
+import { StarRating } from "./StarRating";
+import { useRatings } from "@/hooks/useRatings";
 
 interface MovieCardProps {
   movie: Movie;
@@ -16,30 +16,43 @@ interface MovieCardProps {
   getUserNameById: (userId: string) => string;
 }
 
-export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies, users, getUserNameById }: MovieCardProps) => {
+export const MovieCard = ({
+  movie,
+  onUpdate,
+  onDelete,
+  onRefreshMovies,
+  users,
+  getUserNameById,
+}: MovieCardProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { getRatingForUser, refreshRatings } = useRatings(movie.imdbId);
 
-  const getRatingColor = (rating?: number) => {
-    if (!rating) return 'text-muted-foreground';
-    if (rating >= 4) return 'text-movie-rating';
-    if (rating >= 2.5) return 'text-movie-blue';
-    return 'text-orange-400';
+  const formatDuration = (runtimeSeconds?: number): string => {
+    if (!runtimeSeconds) return "";
+    const hours = Math.floor(runtimeSeconds / 3600);
+    const minutes = Math.floor((runtimeSeconds % 3600) / 60);
+
+    if (hours > 0 && minutes > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (hours > 0) {
+      return `${hours}h`;
+    } else if (minutes > 0) {
+      return `${minutes}m`;
+    }
+    return "";
   };
 
-  const hasRatings = users.some(user => {
-    const apiRating = getRatingForUser(user.id);
-    return apiRating && apiRating.rating > 0;
-  });
-  
-  const hasComments = users.some(user => {
-    const apiRating = getRatingForUser(user.id);
-    return apiRating && apiRating.comments;
-  });
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const day = date.getDate().toString().padStart(2, "0");
+    const month = (date.getMonth() + 1).toString().padStart(2, "0");
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
 
   return (
     <>
-      <Card 
+      <Card
         className="group relative overflow-hidden bg-gradient-card border-border/50 hover:border-movie-blue/30 transition-all duration-300 hover:shadow-glow cursor-pointer transform hover:scale-[1.02]"
         onClick={() => setIsModalOpen(true)}
       >
@@ -49,14 +62,17 @@ export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies, users, g
             alt={movie.title}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
             onError={(e) => {
-              e.currentTarget.src = '/placeholder-movie.jpg';
+              e.currentTarget.src = "/placeholder-movie.jpg";
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          
+
           {/* IMDB Rating Badge */}
           <div className="absolute top-3 left-3">
-            <Badge variant="secondary" className="bg-movie-surface/90 border-movie-blue/30">
+            <Badge
+              variant="secondary"
+              className="bg-movie-surface/90 border-movie-blue/30"
+            >
               <Star className="w-3 h-3 mr-1 text-movie-blue" />
               {movie.imdbRating}
             </Badge>
@@ -70,14 +86,6 @@ export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies, users, g
               <EyeOff className="w-4 h-4 text-muted-foreground" />
             )}
           </div>
-
-
-          {/* Comments Indicator */}
-          {/* {hasComments && (
-            <div className="absolute bottom-3 right-3 opacity-70">
-              <MessageCircle className="w-4 h-4 text-movie-blue" />
-            </div>
-          )} */}
         </div>
 
         <div className="p-4">
@@ -87,17 +95,17 @@ export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies, users, g
           <p className="text-sm text-muted-foreground mb-2">
             {movie.year} • {movie.genre}
           </p>
-          
+
           {/* Watched Date */}
           {movie.watched && movie.watchedAt && (
             <p className="text-xs text-movie-rating mb-2">
-              Watched on {new Date(movie.watchedAt).toLocaleDateString()}
+              Watched on {formatDate(movie.watchedAt)}
             </p>
           )}
-          
+
           {/* Personal Ratings */}
           <div className="space-y-1">
-            {users.map(user => {
+            {users.map((user) => {
               const apiRating = getRatingForUser(user.id);
               const userRating = apiRating ? apiRating.rating : 0;
               return (
@@ -108,6 +116,13 @@ export const MovieCard = ({ movie, onUpdate, onDelete, onRefreshMovies, users, g
               );
             })}
           </div>
+
+          {/* Duration */}
+          {movie.type === "movie" && movie.runtimeSeconds && (
+            <p className="text-xs text-muted-foreground mt-3 italic">
+              Duration: {formatDuration(movie.runtimeSeconds)}
+            </p>
+          )}
         </div>
       </Card>
 
