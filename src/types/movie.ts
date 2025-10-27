@@ -55,4 +55,6 @@ export interface PaginationParams {
   page: number;
   size: number;
   watched?: boolean;
+  orderBy?: string;
+  ascending?: boolean;
 }

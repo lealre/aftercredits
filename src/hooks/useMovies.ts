@@ -11,6 +11,8 @@ export const useMovies = (watchedFilter?: boolean) => {
     totalPages: 0,
     totalResults: 0,
   });
+  const [orderBy, setOrderBy] = useState<string | undefined>(undefined);
+  const [ascending, setAscending] = useState<boolean>(false);
 
   const loadMovies = async (paginationParams?: PaginationParams) => {
     setLoading(true);
@@ -25,6 +27,14 @@ export const useMovies = (watchedFilter?: boolean) => {
       // If watched wasn't explicitly provided, use the hook's filter
       if (params.watched === undefined) {
         params.watched = watchedFilter;
+      }
+
+      // Add sorting parameters if not provided
+      if (params.orderBy === undefined) {
+        params.orderBy = orderBy;
+      }
+      if (params.ascending === undefined) {
+        params.ascending = orderBy ? ascending : undefined;
       }
       
       const response = await fetchMovies(params);
@@ -43,8 +53,8 @@ export const useMovies = (watchedFilter?: boolean) => {
   };
 
   useEffect(() => {
-    loadMovies({ page: 1, size: 20, watched: watchedFilter });
-  }, [watchedFilter]);
+    loadMovies({ page: 1, size: 20, watched: watchedFilter, orderBy, ascending });
+  }, [watchedFilter, orderBy, ascending]);
 
   const addMovie = (movie: Movie) => {
     const newMovies = [...movies, movie];
@@ -64,15 +74,15 @@ export const useMovies = (watchedFilter?: boolean) => {
   };
 
   const refreshMovies = async () => {
-    await loadMovies({ page: pagination.page, size: pagination.size, watched: watchedFilter });
+    await loadMovies({ page: pagination.page, size: pagination.size, watched: watchedFilter, orderBy, ascending });
   };
 
   const changePage = (page: number) => {
-    loadMovies({ page, size: pagination.size, watched: watchedFilter });
+    loadMovies({ page, size: pagination.size, watched: watchedFilter, orderBy, ascending });
   };
 
   const changePageSize = (size: number) => {
-    loadMovies({ page: 1, size, watched: watchedFilter });
+    loadMovies({ page: 1, size, watched: watchedFilter, orderBy, ascending });
   };
 
   return {
@@ -86,5 +96,9 @@ export const useMovies = (watchedFilter?: boolean) => {
     refreshMovies,
     changePage,
     changePageSize,
+    orderBy,
+    setOrderBy,
+    ascending,
+    setAscending,
   };
 };

@@ -85,6 +85,14 @@ export const fetchMovies = async (
         searchParams.append("watched", paginationParams.watched.toString());
       }
 
+      if (paginationParams.orderBy) {
+        searchParams.append("orderBy", paginationParams.orderBy);
+      }
+
+      if (paginationParams.ascending !== undefined) {
+        searchParams.append("ascending", paginationParams.ascending.toString());
+      }
+
       url += `?${searchParams.toString()}`;
     }
 

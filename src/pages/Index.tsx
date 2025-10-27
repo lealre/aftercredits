@@ -22,7 +22,11 @@ const Index = () => {
     deleteMovie, 
     refreshMovies,
     changePage,
-    changePageSize
+    changePageSize,
+    orderBy,
+    setOrderBy,
+    ascending,
+    setAscending,
   } = useMovies(watchedFilterValue);
   const { users, getUserNameById } = useUsers();
 
@@ -41,6 +45,10 @@ const Index = () => {
           watchedFilter={watchedFilter}
           onWatchedFilterChange={setWatchedFilter}
           movieCount={pagination.totalResults}
+          orderBy={orderBy}
+          onOrderByChange={setOrderBy}
+          ascending={ascending}
+          onAscendingChange={setAscending}
         />
         
         <MovieGrid 
