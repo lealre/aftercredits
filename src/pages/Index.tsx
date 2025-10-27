@@ -5,6 +5,7 @@ import { Header } from '@/components/Header';
 import { AddMovieForm } from '@/components/AddMovieForm';
 import { MovieGrid } from '@/components/MovieGrid';
 import { FilterControls } from '@/components/FilterControls';
+import { Loader2 } from 'lucide-react';
 
 const Index = () => {
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
@@ -16,6 +17,8 @@ const Index = () => {
     movies, 
     loading, 
     setLoading, 
+    adding,
+    setAdding,
     pagination,
     addMovie, 
     updateMovie, 
@@ -37,8 +40,8 @@ const Index = () => {
       <main className="container mx-auto px-4 py-8 space-y-8">
         <AddMovieForm 
           onAdd={addMovie} 
-          loading={loading} 
-          setLoading={setLoading} 
+          loading={adding} 
+          setLoading={setAdding} 
         />
         
         <FilterControls
@@ -50,6 +53,15 @@ const Index = () => {
           ascending={ascending}
           onAscendingChange={setAscending}
         />
+        
+        {loading && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="w-12 h-12 animate-spin text-movie-blue" />
+              <p className="text-lg font-medium text-foreground">Loading movies...</p>
+            </div>
+          </div>
+        )}
         
         <MovieGrid 
           movies={movies} 

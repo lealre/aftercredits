@@ -5,6 +5,7 @@ import { fetchMovies } from '@/services/backendService';
 export const useMovies = (watchedFilter?: boolean) => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     size: 20,
@@ -89,6 +90,8 @@ export const useMovies = (watchedFilter?: boolean) => {
     movies,
     loading,
     setLoading,
+    adding,
+    setAdding,
     pagination,
     addMovie,
     updateMovie,
