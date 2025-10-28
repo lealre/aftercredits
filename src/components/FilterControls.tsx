@@ -1,9 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ArrowUpDown, Filter } from 'lucide-react';
+import { ArrowUpDown, Filter, ChevronDown } from 'lucide-react';
 
 interface FilterControlsProps {
   watchedFilter: 'all' | 'watched' | 'unwatched';
@@ -36,6 +34,21 @@ export const FilterControls = ({
   const [open, setOpen] = useState(false);
   const [pendingOrderBy, setPendingOrderBy] = useState<string | undefined>(orderBy);
   const [pendingAscending, setPendingAscending] = useState<boolean>(ascending);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (open && dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [open]);
 
   // Sync pending values when props change
   useEffect(() => {
@@ -49,7 +62,7 @@ export const FilterControls = ({
       setPendingOrderBy(orderBy);
       setPendingAscending(ascending);
     }
-  }, [open]);
+  }, [open, orderBy, ascending]);
 
   const handleApply = () => {
     onOrderByChange(pendingOrderBy);
@@ -95,81 +108,88 @@ export const FilterControls = ({
             </Button>
           </div>
           
-          <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-2 flex items-center gap-2"
-              >
-                <Filter className="w-4 h-4" />
-                More Filters
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80" align="start">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-medium leading-none mb-1">Advanced Filters</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Configure how movies are sorted and filtered
-                  </p>
-                </div>
-                <div className="space-y-4 pt-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Sort by</label>
-                  <Select 
-                    value={pendingOrderBy || '__none__'} 
-                    onValueChange={(value) => {
-                      setPendingOrderBy(value === '__none__' ? undefined : value);
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select field..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">None</SelectItem>
-                      {sortOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+          <div className="relative" ref={dropdownRef}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-2 flex items-center gap-2"
+              onClick={() => setOpen(!open)}
+            >
+              <Filter className="w-4 h-4" />
+              More Filters
+              <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </Button>
+            
+            {open && (
+              <div className="absolute left-0 top-full mt-2 w-80 bg-popover border rounded-md shadow-md p-4 z-50">
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-medium leading-none mb-1">Advanced Filters</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Configure how movies are sorted and filtered
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-4 pt-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Sort by</label>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant={pendingOrderBy === undefined ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setPendingOrderBy(undefined)}
+                          className={pendingOrderBy === undefined ? 'bg-movie-blue text-movie-blue-foreground' : ''}
+                        >
+                          None
+                        </Button>
+                        {sortOptions.map((option) => (
+                          <Button
+                            key={option.value}
+                            variant={pendingOrderBy === option.value ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setPendingOrderBy(option.value)}
+                            className={pendingOrderBy === option.value ? 'bg-movie-blue text-movie-blue-foreground' : ''}
+                          >
+                            {option.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
 
-                {pendingOrderBy && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Order</label>
+                    {pendingOrderBy && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Order</label>
+                        <Button
+                          variant="outline"
+                          className="w-full flex items-center justify-center gap-2"
+                          onClick={() => setPendingAscending(!pendingAscending)}
+                        >
+                          <ArrowUpDown className="w-4 h-4" />
+                          {pendingAscending ? 'Ascending' : 'Descending'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      onClick={handleApply}
+                      className="flex-1 bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
+                    >
+                      Apply
+                    </Button>
                     <Button
                       variant="outline"
-                      className="w-full flex items-center justify-center gap-2"
-                      onClick={() => setPendingAscending(!pendingAscending)}
+                      onClick={handleCancel}
+                      className="flex-1"
                     >
-                      <ArrowUpDown className="w-4 h-4" />
-                      {pendingAscending ? 'Ascending' : 'Descending'}
+                      Cancel
                     </Button>
                   </div>
-                )}
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    onClick={handleApply}
-                    className="flex-1 bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
-                  >
-                    Apply
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleCancel}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
                 </div>
               </div>
-            </PopoverContent>
-          </Popover>
+            )}
+          </div>
         </div>
         <Badge variant="secondary" className="bg-movie-surface border-movie-blue/30">
           {movieCount} movies
