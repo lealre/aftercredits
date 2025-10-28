@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMovies } from '@/hooks/useMovies';
 import { useUsers } from '@/hooks/useUsers';
+import { useBatchRatings } from '@/hooks/useBatchRatings';
 import { Header } from '@/components/Header';
 import { AddMovieForm } from '@/components/AddMovieForm';
 import { MovieGrid } from '@/components/MovieGrid';
@@ -32,6 +33,9 @@ const Index = () => {
     setAscending,
   } = useMovies(watchedFilterValue);
   const { users, getUserNameById } = useUsers();
+  
+  const titleIds = useMemo(() => movies.map(m => m.imdbId), [movies]);
+  const { ratingsMap, getRatingForUser, refreshRatingsForTitle } = useBatchRatings(titleIds);
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -70,6 +74,9 @@ const Index = () => {
           onRefreshMovies={refreshMovies}
           users={users}
           getUserNameById={getUserNameById}
+          ratingsMap={ratingsMap}
+          getRatingForUser={getRatingForUser}
+          refreshRatingsForTitle={refreshRatingsForTitle}
           pagination={pagination}
           onPageChange={changePage}
           onPageSizeChange={changePageSize}

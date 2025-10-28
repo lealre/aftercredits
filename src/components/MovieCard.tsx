@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Movie, User } from "@/types/movie";
+import { Movie, User, Rating } from "@/types/movie";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Star, MessageCircle, Eye, EyeOff } from "lucide-react";
 import { MovieModal } from "./MovieModal";
 import { StarRating } from "./StarRating";
-import { useRatings } from "@/hooks/useRatings";
+// Ratings are now passed from parent via batch fetch
 
 interface MovieCardProps {
   movie: Movie;
@@ -14,6 +14,9 @@ interface MovieCardProps {
   onRefreshMovies?: () => void;
   users: User[];
   getUserNameById: (userId: string) => string;
+  ratings: Rating[];
+  getRatingForUser: (userId: string) => { rating: number; comments: string } | undefined;
+  onRefreshRatings?: () => void;
 }
 
 export const MovieCard = ({
@@ -23,9 +26,11 @@ export const MovieCard = ({
   onRefreshMovies,
   users,
   getUserNameById,
+  ratings,
+  getRatingForUser,
+  onRefreshRatings,
 }: MovieCardProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { getRatingForUser, refreshRatings } = useRatings(movie.imdbId);
 
   const formatDuration = (runtimeSeconds?: number): string => {
     if (!runtimeSeconds) return "";
@@ -132,10 +137,12 @@ export const MovieCard = ({
         onClose={() => setIsModalOpen(false)}
         onUpdate={onUpdate}
         onDelete={onDelete}
-        onRefreshRatings={refreshRatings}
+        onRefreshRatings={onRefreshRatings}
         onRefreshMovies={onRefreshMovies}
         users={users}
         getUserNameById={getUserNameById}
+        ratings={ratings}
+        getRatingForUser={getRatingForUser}
       />
     </>
   );

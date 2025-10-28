@@ -1,4 +1,4 @@
-import { Movie, User } from '@/types/movie';
+import { Movie, User, Rating } from '@/types/movie';
 import { MovieCard } from './MovieCard';
 import { Pagination } from './Pagination';
 
@@ -9,6 +9,9 @@ interface MovieGridProps {
   onRefreshMovies?: () => void;
   users: User[];
   getUserNameById: (userId: string) => string;
+  ratingsMap: Record<string, Rating[]>;
+  getRatingForUser: (titleId: string, userId: string) => { rating: number; comments: string } | undefined;
+  refreshRatingsForTitle: (titleId: string) => Promise<void>;
   pagination?: {
     page: number;
     totalPages: number;
@@ -27,6 +30,9 @@ export const MovieGrid = ({
   onRefreshMovies, 
   users, 
   getUserNameById,
+  ratingsMap,
+  getRatingForUser,
+  refreshRatingsForTitle,
   pagination,
   onPageChange,
   onPageSizeChange,
@@ -73,6 +79,9 @@ export const MovieGrid = ({
             onRefreshMovies={onRefreshMovies}
             users={users}
             getUserNameById={getUserNameById}
+            ratings={ratingsMap[movie.imdbId] || []}
+            getRatingForUser={(userId) => getRatingForUser(movie.imdbId, userId)}
+            onRefreshRatings={() => refreshRatingsForTitle(movie.imdbId)}
           />
         ))}
       </div>

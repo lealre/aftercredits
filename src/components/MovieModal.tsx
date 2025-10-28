@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Movie, User } from '@/types/movie';
+import { Movie, User, Rating } from '@/types/movie';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,6 @@ import { Star, Trash2, ExternalLink, X, Edit3, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { useRatings } from '@/hooks/useRatings';
 import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie } from '@/services/backendService';
 
 interface MovieModalProps {
@@ -30,11 +29,12 @@ interface MovieModalProps {
   onRefreshMovies?: () => void;
   users: User[];
   getUserNameById: (userId: string) => string;
+  ratings: Rating[];
+  getRatingForUser: (userId: string) => { rating: number; comments: string } | undefined;
 }
 
-export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById }: MovieModalProps) => {
+export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById, ratings, getRatingForUser }: MovieModalProps) => {
   const { toast } = useToast();
-  const { getRatingForUser, ratings, refreshRatings } = useRatings(movie.imdbId);
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number; comments: string }>>({});
   const [watched, setWatched] = useState(movie.watched || false);
   const [watchedAt, setWatchedAt] = useState(movie.watchedAt || '');
@@ -112,12 +112,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
         await Promise.all(savePromises.filter(Boolean));
         
-        // Refresh ratings to get the latest data
-        await refreshRatings();
-        
-        // Also refresh ratings in the parent component (MovieCard)
+        // Refresh ratings to get the latest data from batch endpoint
         if (onRefreshRatings) {
-          onRefreshRatings();
+          await onRefreshRatings();
         }
         
         // Clear local ratings after successful save

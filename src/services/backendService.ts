@@ -174,6 +174,34 @@ export const fetchRatings = async (titleId: string): Promise<Rating[]> => {
   }
 };
 
+// Batch fetch ratings for multiple titles
+export const fetchRatingsBatch = async (
+  titles: string[]
+): Promise<Record<string, Rating[]>> => {
+  try {
+    if (!titles || titles.length === 0) return {};
+
+    const response = await fetch(`${API_BASE_URL}/ratings/batch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ titles }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch batch ratings from backend");
+    }
+
+    const data: { titles?: Record<string, Rating[]> } = await response.json();
+    // If response does not include titles, it means no ratings
+    return data.titles ?? {};
+  } catch (error) {
+    console.error("Error fetching batch ratings:", error);
+    throw error;
+  }
+};
+
 export const updateRating = async (
   ratingId: string,
   ratingData: {
