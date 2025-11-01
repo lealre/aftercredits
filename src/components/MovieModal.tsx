@@ -38,8 +38,17 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
-  const [watched, setWatched] = useState(movie.watched || false);
-  const [watchedAt, setWatchedAt] = useState(movie.watchedAt || '');
+  // Initialize watched state directly from movie prop - update only when modal opens with new movie
+  const [watched, setWatched] = useState(() => movie.watched || false);
+  const [watchedAt, setWatchedAt] = useState(() => movie.watchedAt || '');
+  
+  // Sync watched state only when modal opens with a specific movie
+  useEffect(() => {
+    if (isOpen) {
+      setWatched(movie.watched || false);
+      setWatchedAt(movie.watchedAt || '');
+    }
+  }, [isOpen, movie.id]); // Sync when modal opens or movie changes
   const [isEditingWatchedAt, setIsEditingWatchedAt] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -48,7 +57,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [editingCommentText, setEditingCommentText] = useState<string>('');
   const [savingComment, setSavingComment] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
-  const [newCommentUserId, setNewCommentUserId] = useState<string>(users[0]?.id || '');
+  const [newCommentUserId, setNewCommentUserId] = useState<string>('');
   const [newCommentText, setNewCommentText] = useState<string>('');
   const [addingComment, setAddingComment] = useState(false);
   const [showAddCommentForm, setShowAddCommentForm] = useState(false);
@@ -67,14 +76,21 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     }
   }, [movie.imdbId]);
 
-  // Load comments when modal opens
+  // Set default user immediately when modal opens (fast, no async)
+  useEffect(() => {
+    if (isOpen && users.length > 0 && !newCommentUserId) {
+      setNewCommentUserId(users[0].id);
+    }
+  }, [isOpen, users, newCommentUserId]);
+
+  // Load comments when modal opens - defer to next tick to not block rendering
   useEffect(() => {
     if (isOpen) {
-      loadComments();
-      // Set default user for new comment when modal opens
-      if (users.length > 0) {
-        setNewCommentUserId(users[0].id);
-      }
+      // Use setTimeout to defer to next event loop tick, allowing modal to render first
+      const timer = setTimeout(() => {
+        loadComments();
+      }, 0);
+      return () => clearTimeout(timer);
     } else {
       // Reset state when modal closes
       setComments([]);
@@ -82,10 +98,10 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setEditingCommentId(null);
       setEditingCommentText('');
       setNewCommentText('');
-      setNewCommentUserId(users[0]?.id || '');
+      setNewCommentUserId('');
       setShowAddCommentForm(false);
     }
-  }, [isOpen, loadComments, users]);
+  }, [isOpen, loadComments]);
 
   const updateUserRating = (userId: string, rating: number) => {
     setUserRatings(prev => ({
@@ -104,7 +120,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     return apiRating ? apiRating.rating : 0;
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
     const diffInMs = now.getTime() - date.getTime();
@@ -123,7 +139,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     } else {
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
     }
-  };
+  }, []);
 
   const handleEditComment = (comment: Comment) => {
     setEditingCommentId(comment.id);
