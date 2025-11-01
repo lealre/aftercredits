@@ -398,3 +398,18 @@ export const updateComment = async (
     throw error;
   }
 };
+
+export const deleteComment = async (commentId: string): Promise<void> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/comments/${commentId}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to delete comment");
+    }
+  } catch (error) {
+    console.error("Error deleting comment:", error);
+    throw error;
+  }
+};

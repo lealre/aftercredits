@@ -13,11 +13,11 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { Star, Trash2, ExternalLink, X, Edit3, XCircle } from 'lucide-react';
+import { Star, Trash2, ExternalLink, X, Edit3, XCircle, MessageCircle, Trash } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment } from '@/services/backendService';
+import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment } from '@/services/backendService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -36,7 +36,6 @@ interface MovieModalProps {
 export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById, ratings, getRatingForUser }: MovieModalProps) => {
   const { toast } = useToast();
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
-  const [userComments, setUserComments] = useState<Record<string, string>>({});
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [watched, setWatched] = useState(movie.watched || false);
@@ -45,6 +44,14 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState<string>('');
+  const [savingComment, setSavingComment] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [newCommentUserId, setNewCommentUserId] = useState<string>(users[0]?.id || '');
+  const [newCommentText, setNewCommentText] = useState<string>('');
+  const [addingComment, setAddingComment] = useState(false);
+  const [showAddCommentForm, setShowAddCommentForm] = useState(false);
 
   const loadComments = useCallback(async () => {
     setLoadingComments(true);
@@ -64,25 +71,26 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   useEffect(() => {
     if (isOpen) {
       loadComments();
+      // Set default user for new comment when modal opens
+      if (users.length > 0) {
+        setNewCommentUserId(users[0].id);
+      }
     } else {
       // Reset state when modal closes
       setComments([]);
       setUserRatings({});
-      setUserComments({});
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      setNewCommentText('');
+      setNewCommentUserId(users[0]?.id || '');
+      setShowAddCommentForm(false);
     }
-  }, [isOpen, loadComments]);
+  }, [isOpen, loadComments, users]);
 
   const updateUserRating = (userId: string, rating: number) => {
     setUserRatings(prev => ({
       ...prev,
       [userId]: { rating }
-    }));
-  };
-
-  const updateUserComments = (userId: string, comment: string) => {
-    setUserComments(prev => ({
-      ...prev,
-      [userId]: comment
     }));
   };
 
@@ -96,14 +104,137 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     return apiRating ? apiRating.rating : 0;
   };
 
-  const getUserComments = (userId: string) => {
-    // First check if user has a local comment being edited
-    if (userComments[userId] !== undefined) {
-      return userComments[userId];
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInMs = now.getTime() - date.getTime();
+    const diffInHours = diffInMs / (1000 * 60 * 60);
+    const diffInDays = diffInMs / (1000 * 60 * 60 * 24);
+
+    if (diffInHours < 1) {
+      const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+      return diffInMinutes <= 1 ? 'just now' : `${diffInMinutes}m ago`;
+    } else if (diffInHours < 24) {
+      const hours = Math.floor(diffInHours);
+      return `${hours}h ago`;
+    } else if (diffInDays < 7) {
+      const days = Math.floor(diffInDays);
+      return `${days}d ago`;
+    } else {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
     }
-    // Otherwise get from comments API
-    const userComment = comments.find(c => c.userId === userId);
-    return userComment ? userComment.comment : '';
+  };
+
+  const handleEditComment = (comment: Comment) => {
+    setEditingCommentId(comment.id);
+    setEditingCommentText(comment.comment);
+  };
+
+  const handleCancelEditComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentText('');
+  };
+
+  const handleSaveEditComment = async (commentId: string) => {
+    const trimmedComment = editingCommentText.trim();
+    
+    if (!trimmedComment || trimmedComment.length === 0) {
+      toast({
+        title: "Error",
+        description: "Comment cannot be empty or contain only spaces.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingComment(true);
+    try {
+      await updateComment(commentId, trimmedComment);
+      await loadComments();
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      toast({
+        title: "Comment updated!",
+        description: "Your comment has been updated.",
+      });
+    } catch (error) {
+      console.error('Error updating comment:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update comment. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingComment(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    const trimmedComment = newCommentText.trim();
+    
+    if (!newCommentUserId) {
+      toast({
+        title: "Error",
+        description: "Please select a user.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!trimmedComment || trimmedComment.length === 0) {
+      toast({
+        title: "Error",
+        description: "Comment cannot be empty or contain only spaces.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setAddingComment(true);
+    try {
+      await createComment(newCommentUserId, movie.imdbId, trimmedComment);
+      await loadComments();
+      setNewCommentText('');
+      setShowAddCommentForm(false);
+      toast({
+        title: "Comment added!",
+        description: "Your comment has been added.",
+      });
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add comment. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!window.confirm('Are you sure you want to delete this comment?')) {
+      return;
+    }
+
+    setDeletingCommentId(commentId);
+    try {
+      await deleteComment(commentId);
+      await loadComments();
+      toast({
+        title: "Comment deleted",
+        description: "The comment has been removed.",
+      });
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete comment. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingCommentId(null);
+    }
   };
 
   const handleSave = async () => {
@@ -123,33 +254,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
       await Promise.all(ratingPromises.filter(Boolean));
 
-      // Save comments if there are any changes
-      const commentPromises = Object.entries(userComments).map(async ([userId, comment]) => {
-        const existingComment = comments.find(c => c.userId === userId);
-        
-        if (existingComment) {
-          // Update existing comment
-          return updateComment(existingComment.id, comment);
-        } else if (comment.trim()) {
-          // Create new comment
-          return createComment(userId, movie.imdbId, comment);
-        }
-        return null;
-      });
-
-      await Promise.all(commentPromises.filter(Boolean));
-
       // Refresh ratings to get the latest data from batch endpoint
       if (onRefreshRatings) {
         await onRefreshRatings();
       }
 
-      // Reload comments after save
-      await loadComments();
-
       // Clear local state after successful save
       setUserRatings({});
-      setUserComments({});
 
       // Update watched status if it changed
       if (watched !== movie.watched || watchedAt !== movie.watchedAt) {
@@ -370,20 +481,171 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor={`${user.id}-comments`}>Comments</Label>
-                    <Textarea
-                      id={`${user.id}-comments`}
-                      value={getUserComments(user.id)}
-                      onChange={(e) => updateUserComments(user.id, e.target.value)}
-                      placeholder="What did you think about this movie?"
-                      className="bg-movie-surface border-border resize-none"
-                      rows={3}
-                    />
-                  </div>
                 </div>
               </div>
             ))}
+
+            <Separator className="bg-border" />
+
+            {/* Comments Section */}
+            <div className="space-y-3">
+              {/* Comments Feed - Only show if there are comments */}
+              {comments.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
+                    <MessageCircle className="w-4 h-4" />
+                    Comments ({comments.length})
+                  </h3>
+                  <div className="space-y-3 max-h-[250px] overflow-y-auto">
+                    {loadingComments ? (
+                      <div className="text-center text-xs text-muted-foreground py-2">Loading comments...</div>
+                    ) : (
+                      comments.map((comment) => {
+                        const isEditing = editingCommentId === comment.id;
+                        const isUpdated = comment.updatedAt !== comment.createdAt;
+
+                        return (
+                          <div key={comment.id} className="bg-movie-surface border border-border rounded-lg p-3 space-y-2">
+                            {/* Comment Header */}
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-semibold text-foreground">{getUserNameById(comment.userId)}</span>
+                                  <span className="text-xs text-muted-foreground">•</span>
+                                  <span className="text-xs text-muted-foreground">{formatDate(comment.createdAt)}</span>
+                                  {isUpdated && (
+                                    <>
+                                      <span className="text-xs text-muted-foreground">•</span>
+                                      <span className="text-xs text-muted-foreground italic">edited {formatDate(comment.updatedAt)}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              {!isEditing && (
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditComment(comment)}
+                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteComment(comment.id)}
+                                    disabled={deletingCommentId === comment.id}
+                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                  >
+                                    {deletingCommentId === comment.id ? (
+                                      <X className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Trash className="w-3 h-3" />
+                                    )}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Comment Content */}
+                            {isEditing ? (
+                              <div className="space-y-2">
+                                <Textarea
+                                  value={editingCommentText}
+                                  onChange={(e) => setEditingCommentText(e.target.value)}
+                                  placeholder="Write your comment..."
+                                  className="bg-background border-border resize-none min-h-[70px] text-sm"
+                                  rows={3}
+                                />
+                                <div className="flex gap-2 justify-end">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleCancelEditComment}
+                                    disabled={savingComment}
+                                    className="h-8 text-xs"
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleSaveEditComment(comment.id)}
+                                    disabled={savingComment || !editingCommentText.trim() || editingCommentText.trim().length === 0}
+                                    className="h-8 text-xs bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light"
+                                  >
+                                    {savingComment ? 'Saving...' : 'Save'}
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-foreground whitespace-pre-wrap">{comment.comment}</p>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Add Comment Button */}
+              {!showAddCommentForm && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAddCommentForm(true)}
+                  className="w-full border-movie-blue/30 text-movie-blue hover:bg-movie-blue/10"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  Add Comment
+                </Button>
+              )}
+
+              {/* Add Comment Form */}
+              {showAddCommentForm && (
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <select
+                    value={newCommentUserId}
+                    onChange={(e) => setNewCommentUserId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-movie-blue"
+                  >
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Textarea
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                    placeholder="Write your comment..."
+                    className="bg-background border-border resize-none min-h-[70px] text-sm"
+                    rows={3}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowAddCommentForm(false);
+                        setNewCommentText('');
+                      }}
+                      disabled={addingComment}
+                      className="flex-1 h-8 text-xs"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleAddComment}
+                      disabled={addingComment || !newCommentText.trim() || newCommentText.trim().length === 0}
+                      className="flex-1 h-8 text-xs bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light"
+                    >
+                      {addingComment ? 'Adding...' : 'Add Comment'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Actions */}
             <div className="flex gap-2 pt-4">
