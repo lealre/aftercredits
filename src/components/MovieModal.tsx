@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Movie, User, Rating } from '@/types/movie';
+import { useState, useEffect, useCallback } from 'react';
+import { Movie, User, Rating, Comment } from '@/types/movie';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,7 @@ import { Star, Trash2, ExternalLink, X, Edit3, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie } from '@/services/backendService';
+import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment } from '@/services/backendService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -30,12 +30,15 @@ interface MovieModalProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratings: Rating[];
-  getRatingForUser: (userId: string) => { rating: number; comments: string } | undefined;
+  getRatingForUser: (userId: string) => { rating: number } | undefined;
 }
 
 export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById, ratings, getRatingForUser }: MovieModalProps) => {
   const { toast } = useToast();
-  const [userRatings, setUserRatings] = useState<Record<string, { rating: number; comments: string }>>({});
+  const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
+  const [userComments, setUserComments] = useState<Record<string, string>>({});
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
   const [watched, setWatched] = useState(movie.watched || false);
   const [watchedAt, setWatchedAt] = useState(movie.watchedAt || '');
   const [isEditingWatchedAt, setIsEditingWatchedAt] = useState(false);
@@ -43,34 +46,44 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const loadComments = useCallback(async () => {
+    setLoadingComments(true);
+    try {
+      const loadedComments = await fetchComments(movie.imdbId);
+      setComments(loadedComments);
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      // If error, just set empty array
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  }, [movie.imdbId]);
+
+  // Load comments when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadComments();
+    } else {
+      // Reset state when modal closes
+      setComments([]);
+      setUserRatings({});
+      setUserComments({});
+    }
+  }, [isOpen, loadComments]);
+
   const updateUserRating = (userId: string, rating: number) => {
-    setUserRatings(prev => {
-      const existingComments = prev[userId]?.comments;
-      const apiRating = getRatingForUser(userId);
-      
-      return {
-        ...prev,
-        [userId]: { 
-          rating,
-          comments: existingComments !== undefined ? existingComments : (apiRating?.comments || '')
-        }
-      };
-    });
+    setUserRatings(prev => ({
+      ...prev,
+      [userId]: { rating }
+    }));
   };
 
-  const updateUserComments = (userId: string, comments: string) => {
-    setUserRatings(prev => {
-      const existingRating = prev[userId]?.rating;
-      const apiRating = getRatingForUser(userId);
-      
-      return {
-        ...prev,
-        [userId]: { 
-          rating: existingRating !== undefined ? existingRating : (apiRating?.rating || 0), 
-          comments 
-        }
-      };
-    });
+  const updateUserComments = (userId: string, comment: string) => {
+    setUserComments(prev => ({
+      ...prev,
+      [userId]: comment
+    }));
   };
 
   const getUserRating = (userId: string) => {
@@ -84,42 +97,59 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   };
 
   const getUserComments = (userId: string) => {
-    // First check if user has a local rating being edited
-    if (userRatings[userId]) {
-      return userRatings[userId].comments;
+    // First check if user has a local comment being edited
+    if (userComments[userId] !== undefined) {
+      return userComments[userId];
     }
-    // Otherwise get from API
-    const apiRating = getRatingForUser(userId);
-    return apiRating ? apiRating.comments : '';
+    // Otherwise get from comments API
+    const userComment = comments.find(c => c.userId === userId);
+    return userComment ? userComment.comment : '';
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Save ratings first if there are any
-      if (Object.keys(userRatings).length > 0) {
-        const savePromises = Object.entries(userRatings).map(async ([userId, ratingData]) => {
-          if (ratingData.rating >= 0 || ratingData.comments.trim()) {
-            return saveOrUpdateRating({
-              titleId: movie.imdbId,
-              userId: userId,
-              note: ratingData.rating,
-              comments: ratingData.comments,
-            }, ratings);
-          }
-          return null;
-        });
-
-        await Promise.all(savePromises.filter(Boolean));
-        
-        // Refresh ratings to get the latest data from batch endpoint
-        if (onRefreshRatings) {
-          await onRefreshRatings();
+      // Save ratings if there are any changes
+      const ratingPromises = Object.entries(userRatings).map(async ([userId, ratingData]) => {
+        if (ratingData.rating >= 0) {
+          return saveOrUpdateRating({
+            titleId: movie.imdbId,
+            userId: userId,
+            note: ratingData.rating,
+          }, ratings);
         }
+        return null;
+      });
+
+      await Promise.all(ratingPromises.filter(Boolean));
+
+      // Save comments if there are any changes
+      const commentPromises = Object.entries(userComments).map(async ([userId, comment]) => {
+        const existingComment = comments.find(c => c.userId === userId);
         
-        // Clear local ratings after successful save
-        setUserRatings({});
+        if (existingComment) {
+          // Update existing comment
+          return updateComment(existingComment.id, comment);
+        } else if (comment.trim()) {
+          // Create new comment
+          return createComment(userId, movie.imdbId, comment);
+        }
+        return null;
+      });
+
+      await Promise.all(commentPromises.filter(Boolean));
+
+      // Refresh ratings to get the latest data from batch endpoint
+      if (onRefreshRatings) {
+        await onRefreshRatings();
       }
+
+      // Reload comments after save
+      await loadComments();
+
+      // Clear local state after successful save
+      setUserRatings({});
+      setUserComments({});
 
       // Update watched status if it changed
       if (watched !== movie.watched || watchedAt !== movie.watchedAt) {
@@ -141,7 +171,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       
       toast({
         title: "Movie updated!",
-        description: "Your movie information and ratings have been saved.",
+        description: "Your movie information, ratings, and comments have been saved.",
       });
       onClose();
     } catch (error) {

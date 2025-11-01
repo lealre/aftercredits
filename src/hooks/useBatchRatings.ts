@@ -39,7 +39,7 @@ export const useBatchRatings = (titleIds: string[]) => {
   const getRatingForUser = useCallback((titleId: string, userId: string) => {
     const list = ratingsMap[titleId] || [];
     const r = list.find(x => x.userId === userId);
-    return r ? { rating: r.note, comments: r.comments } : undefined;
+    return r ? { rating: r.note } : undefined;
   }, [ratingsMap]);
 
   const refreshRatingsForTitle = useCallback(async (titleId: string) => {

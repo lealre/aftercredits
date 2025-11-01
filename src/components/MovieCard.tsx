@@ -15,7 +15,7 @@ interface MovieCardProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratings: Rating[];
-  getRatingForUser: (userId: string) => { rating: number; comments: string } | undefined;
+  getRatingForUser: (userId: string) => { rating: number } | undefined;
   onRefreshRatings?: () => void;
 }
 

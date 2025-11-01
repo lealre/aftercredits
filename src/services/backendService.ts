@@ -4,6 +4,8 @@ import {
   UsersResponse,
   Rating,
   RatingsResponse,
+  Comment,
+  CommentsResponse,
   PaginatedResponse,
   PaginationParams,
 } from "@/types/movie";
@@ -206,7 +208,6 @@ export const updateRating = async (
   ratingId: string,
   ratingData: {
     note: number;
-    comments: string;
   }
 ): Promise<Rating> => {
   try {
@@ -235,7 +236,6 @@ export const saveOrUpdateRating = async (
     titleId: string;
     userId: string;
     note: number;
-    comments: string;
   },
   existingRatings: Rating[]
 ): Promise<Rating> => {
@@ -250,7 +250,6 @@ export const saveOrUpdateRating = async (
     // Update existing rating
     return updateRating(existingRating.id, {
       note: ratingData.note,
-      comments: ratingData.comments,
     });
   } else {
     // Create new rating
@@ -262,7 +261,6 @@ export const saveRating = async (ratingData: {
   titleId: string;
   userId: string;
   note: number;
-  comments: string;
 }): Promise<Rating> => {
   try {
     const response = await fetch(`${API_BASE_URL}/ratings`, {
@@ -325,6 +323,78 @@ export const deleteMovie = async (imdbId: string): Promise<void> => {
     }
   } catch (error) {
     console.error("Error deleting movie:", error);
+    throw error;
+  }
+};
+
+// Comments endpoints
+export const fetchComments = async (titleId: string): Promise<Comment[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/comments/${titleId}`);
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch comments from backend");
+    }
+
+    const data: CommentsResponse = await response.json();
+    return data.comments;
+  } catch (error) {
+    console.error("Error fetching comments:", error);
+    throw error;
+  }
+};
+
+export const createComment = async (
+  userId: string,
+  titleId: string,
+  comment: string
+): Promise<Comment> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/comments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId,
+        titleId,
+        comment,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to create comment");
+    }
+
+    const commentData: Comment = await response.json();
+    return commentData;
+  } catch (error) {
+    console.error("Error creating comment:", error);
+    throw error;
+  }
+};
+
+export const updateComment = async (
+  commentId: string,
+  comment: string
+): Promise<Comment> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/comments/${commentId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ comment }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to update comment");
+    }
+
+    const commentData: Comment = await response.json();
+    return commentData;
+  } catch (error) {
+    console.error("Error updating comment:", error);
     throw error;
   }
 };

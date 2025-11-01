@@ -10,7 +10,7 @@ interface MovieGridProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratingsMap: Record<string, Rating[]>;
-  getRatingForUser: (titleId: string, userId: string) => { rating: number; comments: string } | undefined;
+  getRatingForUser: (titleId: string, userId: string) => { rating: number } | undefined;
   refreshRatingsForTitle: (titleId: string) => Promise<void>;
   pagination?: {
     page: number;

@@ -21,11 +21,24 @@ export interface Rating {
   titleId: string;
   userId: string;
   note: number;
-  comments: string;
+  // comments field removed - now in separate endpoint
 }
 
 export interface RatingsResponse {
   ratings: Rating[];
+}
+
+export interface Comment {
+  id: string;
+  titleId: string;
+  userId: string;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommentsResponse {
+  comments: Comment[];
 }
 
 export interface User {
