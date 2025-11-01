@@ -13,7 +13,7 @@ export const useMovies = (watchedFilter?: boolean) => {
     totalResults: 0,
   });
   const [orderBy, setOrderBy] = useState<string | undefined>(undefined);
-  const [ascending, setAscending] = useState<boolean>(false);
+  const [ascending, setAscending] = useState<boolean>(true);
 
   const loadMovies = async (paginationParams?: PaginationParams) => {
     setLoading(true);
@@ -54,7 +54,7 @@ export const useMovies = (watchedFilter?: boolean) => {
   };
 
   useEffect(() => {
-    loadMovies({ page: 1, size: 20, watched: watchedFilter, orderBy, ascending });
+    loadMovies({ page: 1, size: 20, watched: watchedFilter, orderBy, ascending: orderBy ? ascending : undefined });
   }, [watchedFilter, orderBy, ascending]);
 
   const addMovie = (movie: Movie) => {
@@ -75,15 +75,15 @@ export const useMovies = (watchedFilter?: boolean) => {
   };
 
   const refreshMovies = async () => {
-    await loadMovies({ page: pagination.page, size: pagination.size, watched: watchedFilter, orderBy, ascending });
+    await loadMovies({ page: pagination.page, size: pagination.size, watched: watchedFilter, orderBy, ascending: orderBy ? ascending : undefined });
   };
 
   const changePage = (page: number) => {
-    loadMovies({ page, size: pagination.size, watched: watchedFilter, orderBy, ascending });
+    loadMovies({ page, size: pagination.size, watched: watchedFilter, orderBy, ascending: orderBy ? ascending : undefined });
   };
 
   const changePageSize = (size: number) => {
-    loadMovies({ page: 1, size, watched: watchedFilter, orderBy, ascending });
+    loadMovies({ page: 1, size, watched: watchedFilter, orderBy, ascending: orderBy ? ascending : undefined });
   };
 
   return {
