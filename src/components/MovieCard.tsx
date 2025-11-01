@@ -61,7 +61,7 @@ export const MovieCard = ({
         className="group relative overflow-hidden bg-gradient-card border-border/50 hover:border-movie-blue/30 transition-all duration-300 hover:shadow-glow cursor-pointer transform hover:scale-[1.02]"
         onClick={() => setIsModalOpen(true)}
       >
-        <div className="aspect-[2/3] relative overflow-hidden">
+        <div className="aspect-[16/9] sm:aspect-[2/3] relative overflow-hidden">
           <img
             src={movie.poster}
             alt={movie.title}

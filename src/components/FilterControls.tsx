@@ -77,68 +77,71 @@ export const FilterControls = ({
   };
 
   return (
-    <div className="p-4 bg-movie-surface/50 rounded-lg border border-border/50">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">Filter:</span>
-          <div className="flex gap-2">
-            <Button
-              variant={watchedFilter === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onWatchedFilterChange('all')}
-              className={watchedFilter === 'all' ? 'bg-movie-blue text-movie-blue-foreground' : ''}
-            >
-              All
-            </Button>
-            <Button
-              variant={watchedFilter === 'watched' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onWatchedFilterChange('watched')}
-              className={watchedFilter === 'watched' ? 'bg-movie-blue text-movie-blue-foreground' : ''}
-            >
-              Watched
-            </Button>
-            <Button
-              variant={watchedFilter === 'unwatched' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onWatchedFilterChange('unwatched')}
-              className={watchedFilter === 'unwatched' ? 'bg-movie-blue text-movie-blue-foreground' : ''}
-            >
-              Unwatched
-            </Button>
+    <div className="p-3 sm:p-4 bg-movie-surface/50 rounded-lg border border-border/50">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">Filter:</span>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant={watchedFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onWatchedFilterChange('all')}
+                className={`text-xs sm:text-sm ${watchedFilter === 'all' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+              >
+                All
+              </Button>
+              <Button
+                variant={watchedFilter === 'watched' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onWatchedFilterChange('watched')}
+                className={`text-xs sm:text-sm ${watchedFilter === 'watched' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+              >
+                Watched
+              </Button>
+              <Button
+                variant={watchedFilter === 'unwatched' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onWatchedFilterChange('unwatched')}
+                className={`text-xs sm:text-sm ${watchedFilter === 'unwatched' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+              >
+                Unwatched
+              </Button>
+            </div>
           </div>
           
           <div className="relative" ref={dropdownRef}>
             <Button
               variant="outline"
               size="sm"
-              className="ml-2 flex items-center gap-2"
+              className="flex items-center gap-2 text-xs sm:text-sm"
               onClick={() => setOpen(!open)}
             >
               <Filter className="w-4 h-4" />
-              More Filters
+              <span className="hidden sm:inline">More Filters</span>
+              <span className="sm:hidden">Filters</span>
               <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
             </Button>
             
             {open && (
-              <div className="absolute left-0 top-full mt-2 w-80 bg-popover border rounded-md shadow-md p-4 z-50">
+              <div className="absolute left-0 sm:left-auto right-0 sm:right-auto top-full mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-popover border rounded-md shadow-md p-4 z-50">
                 <div className="space-y-4">
                   <div>
-                    <h4 className="font-medium leading-none mb-1">Advanced Filters</h4>
-                    <p className="text-sm text-muted-foreground">
+                    <h4 className="font-medium leading-none mb-1 text-sm sm:text-base">Advanced Filters</h4>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
                       Configure how movies are sorted and filtered
                     </p>
                   </div>
                   
                   <div className="space-y-4 pt-2">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Sort by</label>
+                      <label className="text-xs sm:text-sm font-medium">Sort by</label>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           variant={pendingOrderBy === undefined ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => setPendingOrderBy(undefined)}
-                          className={pendingOrderBy === undefined ? 'bg-movie-blue text-movie-blue-foreground' : ''}
+                          className={`text-xs sm:text-sm ${pendingOrderBy === undefined ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
                         >
                           None
                         </Button>
@@ -148,7 +151,7 @@ export const FilterControls = ({
                             variant={pendingOrderBy === option.value ? 'default' : 'outline'}
                             size="sm"
                             onClick={() => setPendingOrderBy(option.value)}
-                            className={pendingOrderBy === option.value ? 'bg-movie-blue text-movie-blue-foreground' : ''}
+                            className={`text-xs sm:text-sm ${pendingOrderBy === option.value ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
                           >
                             {option.label}
                           </Button>
@@ -158,10 +161,10 @@ export const FilterControls = ({
 
                     {pendingOrderBy && (
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">Order</label>
+                        <label className="text-xs sm:text-sm font-medium">Order</label>
                         <Button
                           variant="outline"
-                          className="w-full flex items-center justify-center gap-2"
+                          className="w-full flex items-center justify-center gap-2 text-xs sm:text-sm"
                           onClick={() => setPendingAscending(!pendingAscending)}
                         >
                           <ArrowUpDown className="w-4 h-4" />
@@ -174,14 +177,14 @@ export const FilterControls = ({
                   <div className="flex gap-2 pt-2">
                     <Button
                       onClick={handleApply}
-                      className="flex-1 bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
+                      className="flex-1 bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90 text-xs sm:text-sm"
                     >
                       Apply
                     </Button>
                     <Button
                       variant="outline"
                       onClick={handleCancel}
-                      className="flex-1"
+                      className="flex-1 text-xs sm:text-sm"
                     >
                       Cancel
                     </Button>
@@ -191,7 +194,7 @@ export const FilterControls = ({
             )}
           </div>
         </div>
-        <Badge variant="secondary" className="bg-movie-surface border-movie-blue/30">
+        <Badge variant="secondary" className="bg-movie-surface border-movie-blue/30 text-xs sm:text-sm w-fit sm:w-auto">
           {movieCount} movies
         </Badge>
       </div>
