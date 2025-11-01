@@ -469,56 +469,61 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
             </div>
 
             {/* User Ratings */}
-            {users.map((user, index) => (
-              <div key={user.id}>
-                {index > 0 && <Separator className="bg-border" />}
-                <div className="space-y-3">
-                  <h3 className="text-lg font-semibold text-movie-blue">{user.name}'s Rating</h3>
-                  <div className="space-y-2">
-                    <Label>Rating (0-10 scale)</Label>
-                    <div className="flex items-center gap-3">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="10"
-                        step="0.1"
-                        value={getUserRating(user.id)}
-                        onChange={(e) => {
-                          const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                          if (!isNaN(value)) {
-                            updateUserRating(user.id, Math.min(10, Math.max(0, value)));
-                          }
-                        }}
-                        className="w-20 bg-movie-surface border-border"
-                        placeholder="0.0"
-                      />
-                      <StarRating 
-                        rating={getUserRating(user.id)} 
-                        readonly={true}
-                        size={24}
-                      />
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
+                <Star className="w-4 h-4" />
+                Ratings
+              </h3>
+              <div className="space-y-3">
+                {users.map((user, index) => (
+                  <div key={user.id} className="space-y-2">
+                    {index > 0 && <Separator className="bg-border" />}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-foreground">{user.name}</Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="10"
+                          step="0.1"
+                          value={getUserRating(user.id)}
+                          onChange={(e) => {
+                            const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                            if (!isNaN(value)) {
+                              updateUserRating(user.id, Math.min(10, Math.max(0, value)));
+                            }
+                          }}
+                          className="w-20 bg-movie-surface border-border text-sm"
+                          placeholder="0.0"
+                        />
+                        <StarRating 
+                          rating={getUserRating(user.id)} 
+                          readonly={true}
+                          size={20}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
+            </div>
 
             <Separator className="bg-border" />
 
             {/* Comments Section */}
             <div className="space-y-3">
-              {/* Comments Feed - Only show if there are comments */}
-              {comments.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
-                    <MessageCircle className="w-4 h-4" />
-                    Comments ({comments.length})
-                  </h3>
-                  <div className="space-y-3 max-h-[250px] overflow-y-auto overflow-x-hidden">
-                    {loadingComments ? (
-                      <div className="text-center text-xs text-muted-foreground py-2">Loading comments...</div>
-                    ) : (
-                      comments.map((comment) => {
+              <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
+                <MessageCircle className="w-4 h-4" />
+                Comments ({comments.length})
+              </h3>
+              {/* Comments Feed */}
+              <div className="space-y-3 max-h-[250px] overflow-y-auto overflow-x-hidden">
+                {loadingComments ? (
+                  <div className="text-center text-xs text-muted-foreground py-2">Loading comments...</div>
+                ) : comments.length === 0 ? (
+                  <div className="text-center text-xs text-muted-foreground py-2">No comments yet. Be the first to comment!</div>
+                ) : (
+                  comments.map((comment) => {
                         const isEditing = editingCommentId === comment.id;
                         const isUpdated = comment.updatedAt !== comment.createdAt;
 
@@ -602,10 +607,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                           </div>
                         );
                       })
-                    )}
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Add Comment Button */}
               {!showAddCommentForm && (
