@@ -123,7 +123,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
       // Update watched status if it changed
       if (watched !== movie.watched || watchedAt !== movie.watchedAt) {
-        await updateMovieWatchedStatus(movie.imdbId, watched, watchedAt || undefined);
+        await updateMovieWatchedStatus(movie.imdbId, watched, watchedAt || '');
         
         // Refresh movies to get the latest data from backend
         if (onRefreshMovies) {
@@ -134,7 +134,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       // Save movie updates locally
       const updates: Partial<Movie> = {
         watched,
-        watchedAt: watchedAt || undefined
+        watchedAt: watchedAt || ''
       };
       
       onUpdate(movie.id, updates);
@@ -194,32 +194,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   };
 
   const handleDeleteWatchedDate = async () => {
-    if (window.confirm('Are you sure you want to delete the watched date?')) {
-      try {
-        await updateMovieWatchedStatus(movie.imdbId, watched, '');
-        setWatchedAt('');
-        
-        // Refresh movies to get the latest data from backend
-        if (onRefreshMovies) {
-          await onRefreshMovies();
-        }
-        
-        // Update local state
-        onUpdate(movie.id, { watchedAt: '' });
-        
-        toast({
-          title: "Date deleted!",
-          description: "Watched date has been removed.",
-        });
-      } catch (error) {
-        console.error('Error deleting watched date:', error);
-        toast({
-          title: "Error",
-          description: "Failed to delete watched date. Please try again.",
-          variant: "destructive",
-        });
-      }
-    }
+    // Only update local state; persist on Save
+    setWatchedAt('');
+    setIsEditingWatchedAt(false);
   };
 
   return (

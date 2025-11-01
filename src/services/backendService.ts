@@ -288,12 +288,13 @@ export const saveRating = async (ratingData: {
 export const updateMovieWatchedStatus = async (
   imdbId: string,
   watched: boolean,
-  watchedAt?: string
+  watchedAt: string
 ): Promise<void> => {
   try {
-    const body: { watched: boolean; watchedAt?: string } = { watched };
-    if (watchedAt) {
-      body.watchedAt = watchedAt;
+    const body: { watched: boolean; watchedAt: string } = { watched, watchedAt };
+    if (!watched) {
+      console.log('Setting watchedAt to empty string for title ID', imdbId);
+      body.watchedAt = '';
     }
 
     const response = await fetch(`${API_BASE_URL}/titles/${imdbId}`, {
