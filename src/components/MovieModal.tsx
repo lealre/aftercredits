@@ -342,14 +342,15 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-movie-surface border-border">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col bg-movie-surface border-border p-0">
+        <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle className="text-movie-blue">{movie.title}</DialogTitle>
         </DialogHeader>
         
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="flex-1 overflow-hidden px-3 pb-3 flex">
+          <div className="grid md:grid-cols-2 gap-3 w-full min-h-0">
           {/* Movie Info */}
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto">
             <div className="aspect-[2/3] relative overflow-hidden rounded-lg">
               <img
                 src={movie.poster}
@@ -387,7 +388,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
           </div>
 
           {/* Movie Status */}
-          <div className="space-y-6">
+          <div className="flex flex-col h-full">
+            <div className="flex-1 overflow-y-auto space-y-6">
             {/* Watched Status */}
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
@@ -496,7 +498,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     <MessageCircle className="w-4 h-4" />
                     Comments ({comments.length})
                   </h3>
-                  <div className="space-y-3 max-h-[250px] overflow-y-auto">
+                  <div className="space-y-3 max-h-[250px] overflow-y-auto overflow-x-hidden">
                     {loadingComments ? (
                       <div className="text-center text-xs text-muted-foreground py-2">Loading comments...</div>
                     ) : (
@@ -505,7 +507,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         const isUpdated = comment.updatedAt !== comment.createdAt;
 
                         return (
-                          <div key={comment.id} className="bg-movie-surface border border-border rounded-lg p-3 space-y-2">
+                          <div key={comment.id} className="bg-movie-surface border border-border rounded-lg p-3 space-y-2 overflow-x-hidden">
                             {/* Comment Header */}
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
@@ -579,7 +581,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 </div>
                               </div>
                             ) : (
-                              <p className="text-sm text-foreground whitespace-pre-wrap">{comment.comment}</p>
+                              <p className="text-sm text-foreground whitespace-pre-wrap break-all max-w-full">{comment.comment}</p>
                             )}
                           </div>
                         );
@@ -646,9 +648,10 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 </div>
               )}
             </div>
+            </div>
 
             {/* Actions */}
-            <div className="flex gap-2 pt-4">
+            <div className="flex gap-2 pt-4 pb-4 shrink-0">
               <Button 
                 onClick={handleSave} 
                 disabled={saving}
@@ -665,6 +668,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
+          </div>
           </div>
         </div>
       </DialogContent>
