@@ -605,7 +605,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 </div>
                               </div>
                             ) : (
-                              <p className="text-sm text-foreground whitespace-pre-wrap break-all max-w-full">{comment.comment}</p>
+                              <p className="text-sm text-foreground whitespace-pre-wrap break-words max-w-full">{comment.comment}</p>
                             )}
                           </div>
                         );

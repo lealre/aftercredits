@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Movie, PaginatedResponse, PaginationParams } from '@/types/movie';
-import { fetchMovies } from '@/services/backendService';
+import { useState, useEffect } from "react";
+import { Movie, PaginatedResponse, PaginationParams } from "@/types/movie";
+import { fetchMovies } from "@/services/backendService";
 
 export const useMovies = (watchedFilter?: boolean) => {
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -19,12 +19,12 @@ export const useMovies = (watchedFilter?: boolean) => {
     setLoading(true);
     try {
       // Use provided params or defaults, ensuring watched filter is always included
-      const params: PaginationParams = paginationParams || { 
-        page: 1, 
-        size: 20, 
-        watched: watchedFilter 
+      const params: PaginationParams = paginationParams || {
+        page: 1,
+        size: 20,
+        watched: watchedFilter,
       };
-      
+
       // If watched wasn't explicitly provided, use the hook's filter
       if (params.watched === undefined) {
         params.watched = watchedFilter;
@@ -37,7 +37,7 @@ export const useMovies = (watchedFilter?: boolean) => {
       if (params.ascending === undefined) {
         params.ascending = orderBy ? ascending : undefined;
       }
-      
+
       const response = await fetchMovies(params);
       setMovies(response.Content);
       setPagination({
@@ -47,14 +47,20 @@ export const useMovies = (watchedFilter?: boolean) => {
         totalResults: response.TotalResults,
       });
     } catch (error) {
-      console.error('Error loading movies:', error);
+      console.error("Error loading movies:", error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadMovies({ page: 1, size: 20, watched: watchedFilter, orderBy, ascending: orderBy ? ascending : undefined });
+    loadMovies({
+      page: 1,
+      size: 20,
+      watched: watchedFilter,
+      orderBy,
+      ascending: orderBy ? ascending : undefined,
+    });
   }, [watchedFilter, orderBy, ascending]);
 
   const addMovie = (movie: Movie) => {
@@ -63,27 +69,45 @@ export const useMovies = (watchedFilter?: boolean) => {
   };
 
   const updateMovie = (id: string, updates: Partial<Movie>) => {
-    const newMovies = movies.map(movie => 
+    const newMovies = movies.map((movie) =>
       movie.id === id ? { ...movie, ...updates } : movie
     );
     setMovies(newMovies);
   };
 
   const deleteMovie = (id: string) => {
-    const newMovies = movies.filter(movie => movie.id !== id);
+    const newMovies = movies.filter((movie) => movie.id !== id);
     setMovies(newMovies);
   };
 
   const refreshMovies = async () => {
-    await loadMovies({ page: pagination.page, size: pagination.size, watched: watchedFilter, orderBy, ascending: orderBy ? ascending : undefined });
+    await loadMovies({
+      page: pagination.page,
+      size: pagination.size,
+      watched: watchedFilter,
+      orderBy,
+      ascending: orderBy ? ascending : undefined,
+    });
   };
 
   const changePage = (page: number) => {
-    loadMovies({ page, size: pagination.size, watched: watchedFilter, orderBy, ascending: orderBy ? ascending : undefined });
+    loadMovies({
+      page,
+      size: pagination.size,
+      watched: watchedFilter,
+      orderBy,
+      ascending: orderBy ? ascending : undefined,
+    });
   };
 
   const changePageSize = (size: number) => {
-    loadMovies({ page: 1, size, watched: watchedFilter, orderBy, ascending: orderBy ? ascending : undefined });
+    loadMovies({
+      page: 1,
+      size,
+      watched: watchedFilter,
+      orderBy,
+      ascending: orderBy ? ascending : undefined,
+    });
   };
 
   return {
