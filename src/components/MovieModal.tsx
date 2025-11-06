@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { Star, Trash2, ExternalLink, X, Edit3, XCircle, MessageCircle, Trash } from 'lucide-react';
+import { Star, Trash2, ExternalLink, X, Edit3, XCircle, MessageCircle, Trash, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
@@ -50,6 +50,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     }
   }, [isOpen, movie.id]); // Sync when modal opens or movie changes
   const [isEditingWatchedAt, setIsEditingWatchedAt] = useState(false);
+  const [tempWatchedAt, setTempWatchedAt] = useState(''); // Temporary date while editing
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -92,7 +93,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }, 0);
       return () => clearTimeout(timer);
     } else {
-      // Reset state when modal closes
+      // Reset state when modal closes - revert to original movie data
       setComments([]);
       setUserRatings({});
       setEditingCommentId(null);
@@ -100,8 +101,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setNewCommentText('');
       setNewCommentUserId('');
       setShowAddCommentForm(false);
+      setWatched(movie.watched || false);
+      setWatchedAt(movie.watchedAt || '');
+      setIsEditingWatchedAt(false);
+      setTempWatchedAt('');
     }
-  }, [isOpen, loadComments]);
+  }, [isOpen, loadComments, movie.watched, movie.watchedAt]);
 
   const updateUserRating = (userId: string, rating: number) => {
     setUserRatings(prev => ({
@@ -429,7 +434,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setIsEditingWatchedAt(!isEditingWatchedAt)}
+                        onClick={() => {
+                          if (!isEditingWatchedAt) {
+                            setTempWatchedAt(watchedAt);
+                          }
+                          setIsEditingWatchedAt(!isEditingWatchedAt);
+                        }}
                         className="h-6 w-6 p-0"
                       >
                         <Edit3 className="h-3 w-3" />
@@ -449,14 +459,28 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     <div className="flex items-center space-x-2">
                       <Input
                         type="date"
-                        value={watchedAt}
-                        onChange={(e) => setWatchedAt(e.target.value)}
-                        className="text-sm"
+                        value={tempWatchedAt}
+                        onChange={(e) => setTempWatchedAt(e.target.value)}
+                        className="text-sm bg-movie-surface border-border text-foreground [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                       />
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setIsEditingWatchedAt(false)}
+                        onClick={() => {
+                          setWatchedAt(tempWatchedAt);
+                          setIsEditingWatchedAt(false);
+                        }}
+                        className="h-8 px-2"
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setTempWatchedAt(watchedAt);
+                          setIsEditingWatchedAt(false);
+                        }}
                         className="h-8 px-2"
                       >
                         <X className="h-3 w-3" />
@@ -464,7 +488,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     </div>
                   ) : (
                     <div className="text-sm text-foreground">
-                      {watchedAt ? new Date(watchedAt).toLocaleDateString() : 'No date set'}
+                      {watchedAt ? new Date(watchedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'No date set'}
                     </div>
                   )}
                 </div>
