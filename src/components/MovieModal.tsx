@@ -51,6 +51,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   }, [isOpen, movie.id]); // Sync when modal opens or movie changes
   const [isEditingWatchedAt, setIsEditingWatchedAt] = useState(false);
   const [tempWatchedAt, setTempWatchedAt] = useState(''); // Temporary date while editing
+  const [editingUserId, setEditingUserId] = useState<string | null>(null); // Track which user's rating is being edited
+  const [tempUserRatings, setTempUserRatings] = useState<Record<string, { rating: number }>>({}); // Temporary ratings while editing
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -105,24 +107,48 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setWatchedAt(movie.watchedAt || '');
       setIsEditingWatchedAt(false);
       setTempWatchedAt('');
+      setEditingUserId(null);
+      setTempUserRatings({});
     }
   }, [isOpen, loadComments, movie.watched, movie.watchedAt]);
 
   const updateUserRating = (userId: string, rating: number) => {
-    setUserRatings(prev => ({
-      ...prev,
-      [userId]: { rating }
-    }));
+    if (editingUserId === userId) {
+      // Update temporary rating when editing this specific user
+      setTempUserRatings(prev => ({
+        ...prev,
+        [userId]: { rating }
+      }));
+    } else {
+      // Update actual ratings when not editing (shouldn't happen, but keep for safety)
+      setUserRatings(prev => ({
+        ...prev,
+        [userId]: { rating }
+      }));
+    }
   };
 
   const getUserRating = (userId: string) => {
-    // First check if user has a local rating being edited
-    if (userRatings[userId]) {
-      return userRatings[userId].rating;
+    if (editingUserId === userId) {
+      // When editing this user, use temp rating if available, otherwise fall back to current rating
+      if (tempUserRatings[userId]) {
+        return tempUserRatings[userId].rating;
+      }
+      // Fall back to current rating (from API or userRatings)
+      if (userRatings[userId]) {
+        return userRatings[userId].rating;
+      }
+      const apiRating = getRatingForUser(userId);
+      return apiRating ? apiRating.rating : 0;
+    } else {
+      // When not editing, check if user has a local rating being edited
+      if (userRatings[userId]) {
+        return userRatings[userId].rating;
+      }
+      // Otherwise get from API
+      const apiRating = getRatingForUser(userId);
+      return apiRating ? apiRating.rating : 0;
     }
-    // Otherwise get from API
-    const apiRating = getRatingForUser(userId);
-    return apiRating ? apiRating.rating : 0;
   };
 
   const formatDate = useCallback((dateString: string) => {
@@ -507,27 +533,88 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     {index > 0 && <Separator className="bg-border" />}
                     <div className="space-y-2">
                       <Label className="text-sm font-medium text-foreground">{user.name}</Label>
-                      <div className="flex items-center gap-3">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="10"
-                          step="0.1"
-                          value={getUserRating(user.id)}
-                          onChange={(e) => {
-                            const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                            if (!isNaN(value)) {
-                              updateUserRating(user.id, Math.min(10, Math.max(0, value)));
-                            }
-                          }}
-                          className="w-20 bg-movie-surface border-border text-sm"
-                          placeholder="0.0"
-                        />
-                        <StarRating 
-                          rating={getUserRating(user.id)} 
-                          readonly={true}
-                          size={20}
-                        />
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-3">
+                          {editingUserId === user.id ? (
+                            <Input
+                              type="number"
+                              min="0"
+                              max="10"
+                              step="0.1"
+                              value={getUserRating(user.id)}
+                              onChange={(e) => {
+                                const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                if (!isNaN(value)) {
+                                  updateUserRating(user.id, Math.min(10, Math.max(0, value)));
+                                }
+                              }}
+                              className="w-20 bg-movie-surface border-border text-sm"
+                              placeholder="0.0"
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="text-sm text-foreground">
+                              {getUserRating(user.id).toFixed(1)}
+                            </div>
+                          )}
+                          <StarRating 
+                            rating={getUserRating(user.id)} 
+                            readonly={true}
+                            size={20}
+                          />
+                        </div>
+                        {editingUserId === user.id ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                // Confirm: commit temp rating to userRatings
+                                if (tempUserRatings[user.id]) {
+                                  setUserRatings(prev => ({
+                                    ...prev,
+                                    [user.id]: tempUserRatings[user.id]
+                                  }));
+                                }
+                                setEditingUserId(null);
+                              }}
+                              className="h-6 w-6 p-0"
+                            >
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                // Cancel: revert temp rating
+                                const updatedTemp = { ...tempUserRatings };
+                                delete updatedTemp[user.id];
+                                setTempUserRatings(updatedTemp);
+                                setEditingUserId(null);
+                              }}
+                              className="h-6 w-6 p-0"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              // Initialize temp rating with current value
+                              const currentRating = getUserRating(user.id);
+                              setTempUserRatings(prev => ({
+                                ...prev,
+                                [user.id]: { rating: currentRating }
+                              }));
+                              setEditingUserId(user.id);
+                            }}
+                            className="h-6 w-6 p-0"
+                          >
+                            <Edit3 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
