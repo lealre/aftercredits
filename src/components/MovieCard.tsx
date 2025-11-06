@@ -76,9 +76,9 @@ export const MovieCard = ({
           <div className="absolute top-3 left-3">
             <Badge
               variant="secondary"
-              className="bg-movie-surface/90 border-movie-blue/30"
+              className="bg-movie-surface/95 backdrop-blur-sm border-movie-blue/40 shadow-lg text-sm font-semibold px-2 py-1"
             >
-              <Star className="w-3 h-3 mr-1 text-movie-blue" />
+              <Star className="w-4 h-4 mr-1.5 text-movie-blue" />
               {movie.imdbRating}
             </Badge>
           </div>
@@ -98,7 +98,7 @@ export const MovieCard = ({
             {movie.title}
           </h3>
           <p className="text-sm text-muted-foreground mb-2">
-            {movie.year} • {movie.genre}
+          {movie.type === "movie" ? "Movie" : "TV Series"} • {movie.year} • {movie.genre}
           </p>
 
           {/* Watched Date */}
