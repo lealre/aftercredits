@@ -305,18 +305,23 @@ export const saveRating = async (ratingData: {
 };
 
 export const updateMovieWatchedStatus = async (
-  imdbId: string,
+  groupId: string,
+  titleId: string,
   watched: boolean,
   watchedAt: string
 ): Promise<void> => {
   try {
-    const body: { watched: boolean; watchedAt: string } = { watched, watchedAt };
+    const body: { titleId: string; watched: boolean; watchedAt: string } = { 
+      titleId, 
+      watched, 
+      watchedAt 
+    };
     if (!watched) {
-      console.log('Setting watchedAt to empty string for title ID', imdbId);
+      console.log('Setting watchedAt to empty string for title ID', titleId);
       body.watchedAt = '';
     }
 
-    const response = await fetch(`${API_BASE_URL}/titles/${imdbId}`, {
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
