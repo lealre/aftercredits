@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
-import { Movie, PaginatedResponse, PaginationParams } from "@/types/movie";
+import { Movie, PaginatedResponse, PaginationParams, Rating } from "@/types/movie";
 import { fetchMovies } from "@/services/backendService";
+
+export const GROUP_ID = "690bb4b2029d2b31b8b66835";
 
 export const useMovies = (watchedFilter?: boolean) => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [ratingsMap, setRatingsMap] = useState<Record<string, Rating[]>>({});
   const [pagination, setPagination] = useState({
     page: 1,
     size: 20,
@@ -38,8 +41,9 @@ export const useMovies = (watchedFilter?: boolean) => {
         params.ascending = orderBy ? ascending : undefined;
       }
 
-      const response = await fetchMovies(params);
+      const response = await fetchMovies(GROUP_ID, params);
       setMovies(response.Content);
+      setRatingsMap(response.ratingsMap);
       setPagination({
         page: response.Page,
         size: response.Size,
@@ -117,6 +121,7 @@ export const useMovies = (watchedFilter?: boolean) => {
     adding,
     setAdding,
     pagination,
+    ratingsMap,
     addMovie,
     updateMovie,
     deleteMovie,

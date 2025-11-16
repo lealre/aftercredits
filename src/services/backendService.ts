@@ -33,6 +33,7 @@ interface BackendMovie {
   writersNames: string[];
   starsNames: string[];
   originCountries: string[];
+  groupRatings: Rating[] | null;
   watched: boolean;
   watchedAt?: string;
 }
@@ -71,10 +72,11 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
 };
 
 export const fetchMovies = async (
+  groupId: string,
   paginationParams?: PaginationParams
-): Promise<PaginatedResponse<Movie>> => {
+): Promise<PaginatedResponse<Movie> & { ratingsMap: Record<string, Rating[]> }> => {
   try {
-    let url = `${API_BASE_URL}/titles`;
+    let url = `${API_BASE_URL}/groups/${groupId}/titles`;
 
     if (paginationParams) {
       const searchParams = new URLSearchParams({
@@ -106,12 +108,23 @@ export const fetchMovies = async (
 
     const data: BackendPaginatedResponse = await response.json();
 
+    // Build ratingsMap from embedded groupRatings
+    const ratingsMap: Record<string, Rating[]> = {};
+    data.Content.forEach((movie) => {
+      if (movie.groupRatings && movie.groupRatings.length > 0) {
+        ratingsMap[movie.id] = movie.groupRatings;
+      } else {
+        ratingsMap[movie.id] = [];
+      }
+    });
+
     return {
       Page: data.Page,
       Size: data.Size,
       TotalPages: data.TotalPages,
       TotalResults: data.TotalResults,
       Content: data.Content.map((movie) => mapBackendMovieToMovie(movie)),
+      ratingsMap,
     };
   } catch (error) {
     console.error("Error fetching movies:", error);
@@ -120,10 +133,11 @@ export const fetchMovies = async (
 };
 
 export const addMovieToBackend = async (
+  groupId: string,
   url: string
 ): Promise<{ movie?: BackendMovie; error?: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/titles`, {
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -144,9 +158,9 @@ export const addMovieToBackend = async (
   }
 };
 
-export const fetchUsers = async (): Promise<User[]> => {
+export const fetchUsers = async (groupId: string): Promise<User[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/users`);
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/users`);
 
     if (!response.ok) {
       throw new Error("Failed to fetch users from backend");
