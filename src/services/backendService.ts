@@ -135,23 +135,30 @@ export const fetchMovies = async (
 export const addMovieToBackend = async (
   groupId: string,
   url: string
-): Promise<{ movie?: BackendMovie; error?: string }> => {
+): Promise<{ error?: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
+    const response = await fetch(`${API_BASE_URL}/groups/titles`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, groupId }),
     });
 
     if (!response.ok) {
-      const errorData: AddMovieResponse = await response.json();
-      return { error: errorData.error_message || "Failed to add movie" };
+      const responseText = await response.text();
+      // Try to parse as JSON, otherwise use the string directly
+      try {
+        const errorData: AddMovieResponse = JSON.parse(responseText);
+        return { error: errorData.error_message || "Failed to add movie" };
+      } catch {
+        return { error: responseText || "Failed to add movie" };
+      }
     }
 
-    const movie: BackendMovie = await response.json();
-    return { movie };
+    // Success - API returns just a string notification
+    // Caller should refresh the movies list
+    return {};
   } catch (error) {
     console.error("Error adding movie:", error);
     throw error;

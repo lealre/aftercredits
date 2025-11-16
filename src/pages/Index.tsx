@@ -21,7 +21,6 @@ const Index = () => {
     setAdding,
     pagination,
     ratingsMap,
-    addMovie, 
     updateMovie, 
     deleteMovie, 
     refreshMovies,
@@ -51,7 +50,7 @@ const Index = () => {
       
       <main className="container mx-auto px-4 py-8 space-y-8">
         <AddMovieForm 
-          onAdd={addMovie} 
+          onRefresh={refreshMovies}
           loading={adding} 
           setLoading={setAdding} 
         />
