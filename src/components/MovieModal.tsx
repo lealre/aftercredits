@@ -353,7 +353,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     setDeleting(true);
     try {
       // Delete from backend
-      await deleteMovie(movie.imdbId);
+      await deleteMovie(GROUP_ID, movie.imdbId);
       
       // Update local state
       onDelete(movie.id);

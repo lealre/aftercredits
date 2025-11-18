@@ -338,9 +338,9 @@ export const updateMovieWatchedStatus = async (
   }
 };
 
-export const deleteMovie = async (imdbId: string): Promise<void> => {
+export const deleteMovie = async (groupId: string, titleId: string): Promise<void> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/titles/${imdbId}`, {
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}`, {
       method: "DELETE",
     });
 
