@@ -4,16 +4,16 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Plus, Loader2 } from 'lucide-react';
 import { addMovieToBackend } from '@/services/backendService';
-import { Movie } from '@/types/movie';
 import { useToast } from '@/hooks/use-toast';
+import { GROUP_ID } from '@/hooks/useMovies';
 
 interface AddMovieFormProps {
-  onAdd: (movie: Movie) => void;
+  onRefresh: () => Promise<void>;
   loading: boolean;
   setLoading: (loading: boolean) => void;
 }
 
-export const AddMovieForm = ({ onAdd, loading, setLoading }: AddMovieFormProps) => {
+export const AddMovieForm = ({ onRefresh, loading, setLoading }: AddMovieFormProps) => {
   const [url, setUrl] = useState('');
   const { toast } = useToast();
 
@@ -24,7 +24,7 @@ export const AddMovieForm = ({ onAdd, loading, setLoading }: AddMovieFormProps) 
     setLoading(true);
     
     try {
-      const result = await addMovieToBackend(url);
+      const result = await addMovieToBackend(GROUP_ID, url);
       
       if (result.error) {
         toast({
@@ -35,30 +35,14 @@ export const AddMovieForm = ({ onAdd, loading, setLoading }: AddMovieFormProps) 
         return;
       }
 
-      if (result.movie) {
-        const movie: Movie = {
-          id: result.movie.id,
-          imdbId: result.movie.id,
-          title: result.movie.primaryTitle,
-          year: result.movie.startYear.toString(),
-          poster: result.movie.primaryImage.url,
-          imdbRating: result.movie.rating.aggregateRating.toString(),
-          plot: result.movie.plot,
-          genre: result.movie.genres.join(', '),
-          director: result.movie.directorsNames.join(', '),
-          actors: result.movie.starsNames.join(', '),
-          addedDate: new Date().toISOString().split('T')[0],
-          watched: false,
-        };
-
-        onAdd(movie);
-        setUrl('');
-        
-        toast({
-          title: "Movie added successfully!",
-          description: `"${movie.title}" has been added to your list.`,
-        });
-      }
+      // Success - refresh the movies list with current filters
+      await onRefresh();
+      setUrl('');
+      
+      toast({
+        title: "Movie added successfully!",
+        description: "The movie has been added to your list.",
+      });
       
     } catch (error) {
       console.error('Error adding movie:', error);

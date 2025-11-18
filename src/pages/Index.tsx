@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useMovies } from '@/hooks/useMovies';
 import { useUsers } from '@/hooks/useUsers';
-import { useBatchRatings } from '@/hooks/useBatchRatings';
 import { Header } from '@/components/Header';
 import { AddMovieForm } from '@/components/AddMovieForm';
 import { MovieGrid } from '@/components/MovieGrid';
@@ -21,7 +20,7 @@ const Index = () => {
     adding,
     setAdding,
     pagination,
-    addMovie, 
+    ratingsMap,
     updateMovie, 
     deleteMovie, 
     refreshMovies,
@@ -34,8 +33,16 @@ const Index = () => {
   } = useMovies(watchedFilterValue);
   const { users, getUserNameById } = useUsers();
   
-  const titleIds = useMemo(() => movies.map(m => m.imdbId), [movies]);
-  const { ratingsMap, getRatingForUser, refreshRatingsForTitle } = useBatchRatings(titleIds);
+  const getRatingForUser = useCallback((titleId: string, userId: string) => {
+    const list = ratingsMap[titleId] || [];
+    const r = list.find(x => x.userId === userId);
+    return r ? { rating: r.note } : undefined;
+  }, [ratingsMap]);
+
+  const refreshRatingsForTitle = useCallback(async (titleId: string) => {
+    // Refresh movies to get updated ratings
+    await refreshMovies();
+  }, [refreshMovies]);
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -43,7 +50,7 @@ const Index = () => {
       
       <main className="container mx-auto px-4 py-8 space-y-8">
         <AddMovieForm 
-          onAdd={addMovie} 
+          onRefresh={refreshMovies}
           loading={adding} 
           setLoading={setAdding} 
         />

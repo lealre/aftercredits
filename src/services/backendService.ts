@@ -33,6 +33,7 @@ interface BackendMovie {
   writersNames: string[];
   starsNames: string[];
   originCountries: string[];
+  groupRatings: Rating[] | null;
   watched: boolean;
   watchedAt?: string;
 }
@@ -71,10 +72,11 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
 };
 
 export const fetchMovies = async (
+  groupId: string,
   paginationParams?: PaginationParams
-): Promise<PaginatedResponse<Movie>> => {
+): Promise<PaginatedResponse<Movie> & { ratingsMap: Record<string, Rating[]> }> => {
   try {
-    let url = `${API_BASE_URL}/titles`;
+    let url = `${API_BASE_URL}/groups/${groupId}/titles`;
 
     if (paginationParams) {
       const searchParams = new URLSearchParams({
@@ -106,12 +108,23 @@ export const fetchMovies = async (
 
     const data: BackendPaginatedResponse = await response.json();
 
+    // Build ratingsMap from embedded groupRatings
+    const ratingsMap: Record<string, Rating[]> = {};
+    data.Content.forEach((movie) => {
+      if (movie.groupRatings && movie.groupRatings.length > 0) {
+        ratingsMap[movie.id] = movie.groupRatings;
+      } else {
+        ratingsMap[movie.id] = [];
+      }
+    });
+
     return {
       Page: data.Page,
       Size: data.Size,
       TotalPages: data.TotalPages,
       TotalResults: data.TotalResults,
       Content: data.Content.map((movie) => mapBackendMovieToMovie(movie)),
+      ratingsMap,
     };
   } catch (error) {
     console.error("Error fetching movies:", error);
@@ -120,33 +133,41 @@ export const fetchMovies = async (
 };
 
 export const addMovieToBackend = async (
+  groupId: string,
   url: string
-): Promise<{ movie?: BackendMovie; error?: string }> => {
+): Promise<{ error?: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/titles`, {
+    const response = await fetch(`${API_BASE_URL}/groups/titles`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, groupId }),
     });
 
     if (!response.ok) {
-      const errorData: AddMovieResponse = await response.json();
-      return { error: errorData.error_message || "Failed to add movie" };
+      const responseText = await response.text();
+      // Try to parse as JSON, otherwise use the string directly
+      try {
+        const errorData: AddMovieResponse = JSON.parse(responseText);
+        return { error: errorData.error_message || "Failed to add movie" };
+      } catch {
+        return { error: responseText || "Failed to add movie" };
+      }
     }
 
-    const movie: BackendMovie = await response.json();
-    return { movie };
+    // Success - API returns just a string notification
+    // Caller should refresh the movies list
+    return {};
   } catch (error) {
     console.error("Error adding movie:", error);
     throw error;
   }
 };
 
-export const fetchUsers = async (): Promise<User[]> => {
+export const fetchUsers = async (groupId: string): Promise<User[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/users`);
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/users`);
 
     if (!response.ok) {
       throw new Error("Failed to fetch users from backend");
@@ -284,18 +305,23 @@ export const saveRating = async (ratingData: {
 };
 
 export const updateMovieWatchedStatus = async (
-  imdbId: string,
+  groupId: string,
+  titleId: string,
   watched: boolean,
   watchedAt: string
 ): Promise<void> => {
   try {
-    const body: { watched: boolean; watchedAt: string } = { watched, watchedAt };
+    const body: { titleId: string; watched: boolean; watchedAt: string } = { 
+      titleId, 
+      watched, 
+      watchedAt 
+    };
     if (!watched) {
-      console.log('Setting watchedAt to empty string for title ID', imdbId);
+      console.log('Setting watchedAt to empty string for title ID', titleId);
       body.watchedAt = '';
     }
 
-    const response = await fetch(`${API_BASE_URL}/titles/${imdbId}`, {
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -312,9 +338,9 @@ export const updateMovieWatchedStatus = async (
   }
 };
 
-export const deleteMovie = async (imdbId: string): Promise<void> => {
+export const deleteMovie = async (groupId: string, titleId: string): Promise<void> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/titles/${imdbId}`, {
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}`, {
       method: "DELETE",
     });
 

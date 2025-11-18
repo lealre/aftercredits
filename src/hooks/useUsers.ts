@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User } from '@/types/movie';
 import { fetchUsers } from '@/services/backendService';
+import { GROUP_ID } from './useMovies';
 
 export const useUsers = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -12,7 +13,7 @@ export const useUsers = () => {
       setLoading(true);
       setError(null);
       try {
-        const fetchedUsers = await fetchUsers();
+        const fetchedUsers = await fetchUsers(GROUP_ID);
         setUsers(fetchedUsers);
       } catch (err) {
         console.error('Error loading users:', err);
