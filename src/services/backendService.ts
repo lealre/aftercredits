@@ -248,17 +248,17 @@ export const updateRating = async (
 
 export const saveOrUpdateRating = async (
   ratingData: {
+    groupId: string;
     titleId: string;
-    userId: string;
     note: number;
   },
   existingRatings: Rating[]
 ): Promise<Rating> => {
   // Check if rating already exists for this user and movie
+  // Note: We still check by userId from existingRatings, but send groupId in the request
   const existingRating = existingRatings.find(
     (rating) =>
-      rating.titleId === ratingData.titleId &&
-      rating.userId === ratingData.userId
+      rating.titleId === ratingData.titleId
   );
 
   if (existingRating) {
@@ -273,8 +273,8 @@ export const saveOrUpdateRating = async (
 };
 
 export const saveRating = async (ratingData: {
+  groupId: string;
   titleId: string;
-  userId: string;
   note: number;
 }): Promise<Rating> => {
   try {
@@ -283,7 +283,11 @@ export const saveRating = async (ratingData: {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(ratingData),
+      body: JSON.stringify({
+        groupId: ratingData.groupId,
+        titleId: ratingData.titleId,
+        note: ratingData.note,
+      }),
     });
 
     if (!response.ok) {

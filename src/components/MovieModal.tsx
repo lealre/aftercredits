@@ -300,12 +300,18 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const handleSave = async () => {
     setSaving(true);
     try {
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+
       // Save ratings if there are any changes
       const ratingPromises = Object.entries(userRatings).map(async ([userId, ratingData]) => {
         if (ratingData.rating >= 0) {
           return saveOrUpdateRating({
+            groupId: groupId,
             titleId: movie.imdbId,
-            userId: userId,
             note: ratingData.rating,
           }, ratings);
         }
