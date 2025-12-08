@@ -24,6 +24,11 @@ export interface LoginSuccess extends LoginResponse {}
 type ErrorResponse =
   | { statusCode?: number; errorMessage?: string };
 
+const redirectToLogin = (message?: string) => {
+  const params = message ? `?error=${encodeURIComponent(message)}` : "";
+  window.location.replace(`/login${params}`);
+};
+
 export const login = async (payload: LoginRequest): Promise<LoginSuccess> => {
   const { username, email, password } = payload;
   if (!username && !email) {
@@ -87,5 +92,29 @@ export const getLoginData = (): LoginSuccess | undefined => {
   } catch {
     return undefined;
   }
+};
+
+export const getTokenOrRedirect = () => {
+  const token = getToken();
+  if (!token) {
+    redirectToLogin("Login required");
+    return null;
+  }
+  return token;
+};
+
+export const handleUnauthorized = (message?: string) => {
+  clearToken();
+  redirectToLogin(message || "Session expired. Please log in again.");
+};
+
+export const getErrorMessage = (data: unknown) => {
+  if (!data || typeof data !== "object") return "";
+  return (
+    (data as any).errorMessage ||
+    (data as any).ErrorMessage ||
+    (data as any).error ||
+    ""
+  );
 };
 

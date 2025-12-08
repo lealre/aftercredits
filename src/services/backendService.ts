@@ -8,6 +8,11 @@ import {
   PaginatedResponse,
   PaginationParams,
 } from "@/types/movie";
+import {
+  getTokenOrRedirect,
+  handleUnauthorized,
+  getErrorMessage,
+} from "./authService";
 
 const API_BASE_URL = "/api";
 
@@ -49,6 +54,34 @@ interface AddMovieResponse {
   error_message?: string;
   status_code?: string;
 }
+
+const authFetch = async (url: string, options: RequestInit = {}) => {
+  const token = getTokenOrRedirect();
+  if (!token) {
+    throw new Error("Login required");
+  }
+
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  if (response.status === 401) {
+    try {
+      const data = await response.json();
+      const message = getErrorMessage(data) || "Session expired";
+      handleUnauthorized(message);
+      throw new Error(message);
+    } catch (err) {
+      handleUnauthorized("Session expired");
+      throw err instanceof Error ? err : new Error("Session expired");
+    }
+  }
+
+  return response;
+};
 
 const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
   return {
@@ -99,7 +132,7 @@ export const fetchMovies = async (
       url += `?${searchParams.toString()}`;
     }
 
-    const response = await fetch(url);
+    const response = await authFetch(url);
 
     if (!response.ok) {
       throw new Error("Failed to fetch movies from backend");
@@ -136,7 +169,7 @@ export const addMovieToBackend = async (
   url: string
 ): Promise<{ error?: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/groups/titles`, {
+    const response = await authFetch(`${API_BASE_URL}/groups/titles`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -166,7 +199,7 @@ export const addMovieToBackend = async (
 
 export const fetchUsers = async (groupId: string): Promise<User[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/users`);
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/users`);
 
     if (!response.ok) {
       throw new Error("Failed to fetch users from backend");
@@ -187,7 +220,7 @@ export const updateRating = async (
   }
 ): Promise<Rating> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/ratings/${ratingId}`, {
+    const response = await authFetch(`${API_BASE_URL}/ratings/${ratingId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -239,7 +272,7 @@ export const saveRating = async (ratingData: {
   note: number;
 }): Promise<Rating> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/ratings`, {
+    const response = await authFetch(`${API_BASE_URL}/ratings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -276,7 +309,7 @@ export const updateMovieWatchedStatus = async (
       body.watchedAt = '';
     }
 
-    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -295,7 +328,7 @@ export const updateMovieWatchedStatus = async (
 
 export const deleteMovie = async (groupId: string, titleId: string): Promise<void> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}`, {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}`, {
       method: "DELETE",
     });
 
@@ -311,7 +344,7 @@ export const deleteMovie = async (groupId: string, titleId: string): Promise<voi
 // Comments endpoints
 export const fetchComments = async (titleId: string): Promise<Comment[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/comments/${titleId}`);
+    const response = await authFetch(`${API_BASE_URL}/comments/${titleId}`);
 
     if (!response.ok) {
       throw new Error("Failed to fetch comments from backend");
@@ -331,7 +364,7 @@ export const createComment = async (
   comment: string
 ): Promise<Comment> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/comments`, {
+    const response = await authFetch(`${API_BASE_URL}/comments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -360,7 +393,7 @@ export const updateComment = async (
   comment: string
 ): Promise<Comment> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/comments/${commentId}`, {
+    const response = await authFetch(`${API_BASE_URL}/comments/${commentId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -382,7 +415,7 @@ export const updateComment = async (
 
 export const deleteComment = async (commentId: string): Promise<void> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/comments/${commentId}`, {
+    const response = await authFetch(`${API_BASE_URL}/comments/${commentId}`, {
       method: "DELETE",
     });
 

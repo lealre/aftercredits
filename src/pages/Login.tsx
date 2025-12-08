@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,6 +25,17 @@ const Login = () => {
       navigate("/account", { replace: true });
     }
   }, [navigate]);
+
+  useEffect(() => {
+    const errorMessage = searchParams.get("error");
+    if (errorMessage) {
+      toast({
+        title: "Login required",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  }, [searchParams, toast]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
