@@ -8,6 +8,8 @@ import {
   getLoginData,
   getToken,
   LoginSuccess,
+  saveGroupId,
+  getGroupId,
 } from "@/services/authService";
 
 const UserAccount = () => {
@@ -16,6 +18,13 @@ const UserAccount = () => {
   const loginData: LoginSuccess | undefined = getLoginData();
   const token = loginData?.accessToken || getToken();
   const formattedLastLogin = formatDateTime(loginData?.lastLoginAt);
+
+  useEffect(() => {
+    const firstGroup = loginData?.groups?.[0];
+    if (firstGroup) {
+      saveGroupId(firstGroup);
+    }
+  }, [loginData?.groups]);
 
   useEffect(() => {
     if (!token) {
@@ -54,6 +63,7 @@ const UserAccount = () => {
                 <InfoItem label="Username" value={loginData?.username ?? "—"} />
                 <InfoItem label="Email" value={loginData?.email ?? "—"} />
                 <InfoItem label="Name" value={loginData?.name || "—"} />
+                <InfoItem label="Active Group" value={getGroupId() || "—"} />
                 <InfoItem
                   label="Avatar URL"
                   value={loginData?.avatarUrl || "—"}

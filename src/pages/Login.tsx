@@ -63,11 +63,20 @@ const Login = () => {
         password,
       });
       saveLoginData(data);
-      toast({
-        title: "Login successful",
-        description: "Redirecting to your account page",
-      });
-      navigate("/account", { replace: true });
+      const firstGroup = data.groups?.[0];
+      if (firstGroup) {
+        toast({
+          title: "Login successful",
+          description: "Redirecting to your watchlist",
+        });
+        navigate("/watchlist", { replace: true });
+      } else {
+        toast({
+          title: "No groups found",
+          description: "Redirecting to groups setup",
+        });
+        navigate("/groups", { replace: true });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed";
       toast({

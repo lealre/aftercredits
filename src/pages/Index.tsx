@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMovies } from '@/hooks/useMovies';
 import { useUsers } from '@/hooks/useUsers';
 import { Header } from '@/components/Header';
@@ -6,8 +8,10 @@ import { AddMovieForm } from '@/components/AddMovieForm';
 import { MovieGrid } from '@/components/MovieGrid';
 import { FilterControls } from '@/components/FilterControls';
 import { Loader2 } from 'lucide-react';
+import { getGroupId } from '@/services/authService';
 
 const Index = () => {
+  const navigate = useNavigate();
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
   
   // Convert filter to boolean or undefined for the API
@@ -37,6 +41,13 @@ const Index = () => {
     const r = list.find(x => x.userId === userId);
     return r ? { rating: r.note } : undefined;
   }, [ratingsMap]);
+
+  useEffect(() => {
+    const groupId = getGroupId();
+    if (!groupId) {
+      navigate('/groups', { replace: true });
+    }
+  }, [navigate]);
 
   const refreshRatingsForTitle = useCallback(async (titleId: string) => {
     // Refresh movies to get updated ratings

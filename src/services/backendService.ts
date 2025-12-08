@@ -12,6 +12,7 @@ import {
   getTokenOrRedirect,
   handleUnauthorized,
   getErrorMessage,
+  getGroupId,
 } from "./authService";
 
 const API_BASE_URL = "/api";

@@ -1,6 +1,7 @@
 const API_BASE_URL = "/api";
 const TOKEN_KEY = "access_token";
 const LOGIN_DATA_KEY = "login_data";
+const GROUP_ID_KEY = "group_id";
 
 export interface LoginRequest {
   username?: string;
@@ -75,6 +76,9 @@ export const login = async (payload: LoginRequest): Promise<LoginSuccess> => {
 export const saveLoginData = (data: LoginSuccess) => {
   localStorage.setItem(LOGIN_DATA_KEY, JSON.stringify(data));
   localStorage.setItem(TOKEN_KEY, data.accessToken);
+  if (data.groups?.length) {
+    localStorage.setItem(GROUP_ID_KEY, data.groups[0]);
+  }
 };
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY) ?? "";
@@ -82,6 +86,7 @@ export const getToken = () => localStorage.getItem(TOKEN_KEY) ?? "";
 export const clearToken = () => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(LOGIN_DATA_KEY);
+  localStorage.removeItem(GROUP_ID_KEY);
 };
 
 export const getLoginData = (): LoginSuccess | undefined => {
@@ -92,6 +97,18 @@ export const getLoginData = (): LoginSuccess | undefined => {
   } catch {
     return undefined;
   }
+};
+
+export const saveGroupId = (groupId: string) => {
+  localStorage.setItem(GROUP_ID_KEY, groupId);
+};
+
+export const getGroupId = (): string | null => {
+  return localStorage.getItem(GROUP_ID_KEY);
+};
+
+export const clearGroupId = () => {
+  localStorage.removeItem(GROUP_ID_KEY);
 };
 
 export const getTokenOrRedirect = () => {

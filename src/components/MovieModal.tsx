@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment } from '@/services/backendService';
-import { GROUP_ID } from '@/hooks/useMovies';
+import { getGroupId, handleUnauthorized } from '@/services/authService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -312,7 +312,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
       // Update watched status if it changed
       if (watched !== movie.watched || watchedAt !== movie.watchedAt) {
-        await updateMovieWatchedStatus(GROUP_ID, movie.imdbId, watched, watchedAt || '');
+        const groupId = getGroupId();
+        if (!groupId) {
+          handleUnauthorized("No group selected. Please log in again.");
+          return;
+        }
+        await updateMovieWatchedStatus(groupId, movie.imdbId, watched, watchedAt || '');
         
         // Refresh movies to get the latest data from backend
         if (onRefreshMovies) {
@@ -353,7 +358,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     setDeleting(true);
     try {
       // Delete from backend
-      await deleteMovie(GROUP_ID, movie.imdbId);
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+      await deleteMovie(groupId, movie.imdbId);
       
       // Update local state
       onDelete(movie.id);
