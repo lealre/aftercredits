@@ -69,8 +69,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const loadComments = useCallback(async () => {
     setLoadingComments(true);
     try {
-      const loadedComments = await fetchComments(movie.imdbId);
-      setComments(loadedComments);
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+      const loadedComments = await fetchComments(groupId, movie.imdbId);
+      setComments(Array.isArray(loadedComments) ? loadedComments : []);
     } catch (error) {
       console.error('Error loading comments:', error);
       // If error, just set empty array
@@ -197,7 +202,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
     setSavingComment(true);
     try {
-      await updateComment(commentId, trimmedComment);
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+      await updateComment(groupId, movie.imdbId, commentId, trimmedComment);
       await loadComments();
       setEditingCommentId(null);
       setEditingCommentText('');
@@ -220,15 +230,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const handleAddComment = async () => {
     const trimmedComment = newCommentText.trim();
     
-    if (!newCommentUserId) {
-      toast({
-        title: "Error",
-        description: "Please select a user.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
     if (!trimmedComment || trimmedComment.length === 0) {
       toast({
         title: "Error",
@@ -238,9 +239,15 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       return;
     }
 
+    const groupId = getGroupId();
+    if (!groupId) {
+      handleUnauthorized("No group selected. Please log in again.");
+      return;
+    }
+
     setAddingComment(true);
     try {
-      await createComment(newCommentUserId, movie.imdbId, trimmedComment);
+      await createComment(groupId, movie.imdbId, trimmedComment);
       await loadComments();
       setNewCommentText('');
       setShowAddCommentForm(false);
@@ -267,7 +274,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
     setDeletingCommentId(commentId);
     try {
-      await deleteComment(commentId);
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+      await deleteComment(groupId, movie.imdbId, commentId);
       await loadComments();
       toast({
         title: "Comment deleted",
