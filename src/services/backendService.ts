@@ -3,7 +3,6 @@ import {
   User,
   UsersResponse,
   Rating,
-  RatingsResponse,
   Comment,
   CommentsResponse,
   PaginatedResponse,
@@ -177,50 +176,6 @@ export const fetchUsers = async (groupId: string): Promise<User[]> => {
     return data.users;
   } catch (error) {
     console.error("Error fetching users:", error);
-    throw error;
-  }
-};
-
-export const fetchRatings = async (titleId: string): Promise<Rating[]> => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/titles/${titleId}/ratings`);
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch ratings from backend");
-    }
-
-    const data: RatingsResponse = await response.json();
-    return data.ratings;
-  } catch (error) {
-    console.error("Error fetching ratings:", error);
-    throw error;
-  }
-};
-
-// Batch fetch ratings for multiple titles
-export const fetchRatingsBatch = async (
-  titles: string[]
-): Promise<Record<string, Rating[]>> => {
-  try {
-    if (!titles || titles.length === 0) return {};
-
-    const response = await fetch(`${API_BASE_URL}/ratings/batch`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ titles }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch batch ratings from backend");
-    }
-
-    const data: { titles?: Record<string, Rating[]> } = await response.json();
-    // If response does not include titles, it means no ratings
-    return data.titles ?? {};
-  } catch (error) {
-    console.error("Error fetching batch ratings:", error);
     throw error;
   }
 };

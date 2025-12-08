@@ -49,7 +49,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setWatched(movie.watched || false);
       setWatchedAt(movie.watchedAt || '');
     }
-  }, [isOpen, movie.id]); // Sync when modal opens or movie changes
+  }, [isOpen, movie.id, movie.watched, movie.watchedAt]); // Sync when modal opens or movie changes
   const [isEditingWatchedAt, setIsEditingWatchedAt] = useState(false);
   const [tempWatchedAt, setTempWatchedAt] = useState(''); // Temporary date while editing
   const [editingUserId, setEditingUserId] = useState<string | null>(null); // Track which user's rating is being edited

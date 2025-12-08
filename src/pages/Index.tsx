@@ -16,7 +16,6 @@ const Index = () => {
   const { 
     movies, 
     loading, 
-    setLoading, 
     adding,
     setAdding,
     pagination,

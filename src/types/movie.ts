@@ -50,12 +50,6 @@ export interface UsersResponse {
   users: User[];
 }
 
-export interface MovieRating {
-  userId: string;
-  rating: number;
-  comments: string;
-}
-
 export interface PaginatedResponse<T> {
   Page: number;
   Size: number;
