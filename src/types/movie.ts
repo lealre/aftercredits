@@ -65,3 +65,25 @@ export interface PaginationParams {
   orderBy?: string;
   ascending?: boolean;
 }
+
+export interface UserResponse {
+  id: string;
+  username: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string | null;
+  groups?: string[];
+  lastLoginAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupResponse {
+  id: string;
+  name: string;
+  ownerId: string;
+  users: string[];
+  titles: any[];
+  createdAt: string;
+  updatedAt: string;
+}

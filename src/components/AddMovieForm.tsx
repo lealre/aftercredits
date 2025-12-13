@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Plus, Loader2 } from 'lucide-react';
 import { addMovieToBackend } from '@/services/backendService';
 import { useToast } from '@/hooks/use-toast';
-import { GROUP_ID } from '@/hooks/useMovies';
+import { getGroupId, handleUnauthorized } from '@/services/authService';
 
 interface AddMovieFormProps {
   onRefresh: () => Promise<void>;
@@ -24,7 +24,12 @@ export const AddMovieForm = ({ onRefresh, loading, setLoading }: AddMovieFormPro
     setLoading(true);
     
     try {
-      const result = await addMovieToBackend(GROUP_ID, url);
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+      const result = await addMovieToBackend(groupId, url);
       
       if (result.error) {
         toast({

@@ -1,0 +1,131 @@
+const API_BASE_URL = "/api";
+const TOKEN_KEY = "access_token";
+const USER_ID_KEY = "user_id";
+const GROUP_ID_KEY = "group_id";
+
+export interface LoginRequest {
+  username?: string;
+  email?: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  id: string;
+  email: string;
+  username: string;
+  name?: string;
+  avatarUrl?: string | null;
+  groups: string[];
+  lastLoginAt?: string | null;
+  accessToken: string;
+}
+
+export interface LoginSuccess extends LoginResponse {}
+
+type ErrorResponse =
+  | { statusCode?: number; errorMessage?: string };
+
+const redirectToLogin = (message?: string) => {
+  const params = message ? `?error=${encodeURIComponent(message)}` : "";
+  window.location.replace(`/login${params}`);
+};
+
+export const login = async (payload: LoginRequest): Promise<LoginSuccess> => {
+  const { username, email, password } = payload;
+  if (!username && !email) {
+    throw new Error("Username or email is required");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      username,
+      email,
+      password,
+    }),
+  });
+
+  if (!response.ok) {
+    let message = "Login failed";
+    try {
+      const errorBody: ErrorResponse = await response.json();
+      message =
+        (errorBody as any)?.errorMessage ||
+        message;
+    } catch {
+      // ignore parse errors and use default message
+    }
+    throw new Error(message);
+  }
+
+  const data: LoginResponse = await response.json();
+  if (!data?.accessToken) {
+    throw new Error("Invalid login response");
+  }
+
+  return {
+    ...data,
+    lastLoginAt: data.lastLoginAt ?? null,
+    avatarUrl: data.avatarUrl ?? null,
+  };
+};
+
+export const saveLoginData = (data: LoginSuccess) => {
+  localStorage.setItem(TOKEN_KEY, data.accessToken);
+  localStorage.setItem(USER_ID_KEY, data.id);
+  if (data.groups?.length) {
+    localStorage.setItem(GROUP_ID_KEY, data.groups[0]);
+  }
+};
+
+export const getToken = () => localStorage.getItem(TOKEN_KEY) ?? "";
+
+export const clearToken = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_ID_KEY);
+  localStorage.removeItem(GROUP_ID_KEY);
+};
+
+export const getUserId = (): string | null => {
+  return localStorage.getItem(USER_ID_KEY);
+};
+
+export const saveGroupId = (groupId: string) => {
+  localStorage.setItem(GROUP_ID_KEY, groupId);
+};
+
+export const getGroupId = (): string | null => {
+  return localStorage.getItem(GROUP_ID_KEY);
+};
+
+export const clearGroupId = () => {
+  localStorage.removeItem(GROUP_ID_KEY);
+};
+
+export const getTokenOrRedirect = () => {
+  const token = getToken();
+  if (!token) {
+    redirectToLogin("Login required");
+    return null;
+  }
+  return token;
+};
+
+export const handleUnauthorized = (message?: string) => {
+  clearToken();
+  redirectToLogin(message || "Session expired. Please log in again.");
+};
+
+export const getErrorMessage = (data: unknown) => {
+  if (!data || typeof data !== "object") return "";
+  return (
+    (data as any).errorMessage ||
+    (data as any).ErrorMessage ||
+    (data as any).error ||
+    ""
+  );
+};
+

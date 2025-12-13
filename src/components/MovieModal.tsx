@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment } from '@/services/backendService';
-import { GROUP_ID } from '@/hooks/useMovies';
+import { getGroupId, handleUnauthorized, getUserId } from '@/services/authService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -36,6 +36,7 @@ interface MovieModalProps {
 
 export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById, ratings, getRatingForUser }: MovieModalProps) => {
   const { toast } = useToast();
+  const currentUserId = getUserId();
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -61,7 +62,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [editingCommentText, setEditingCommentText] = useState<string>('');
   const [savingComment, setSavingComment] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
-  const [newCommentUserId, setNewCommentUserId] = useState<string>('');
   const [newCommentText, setNewCommentText] = useState<string>('');
   const [addingComment, setAddingComment] = useState(false);
   const [showAddCommentForm, setShowAddCommentForm] = useState(false);
@@ -69,8 +69,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const loadComments = useCallback(async () => {
     setLoadingComments(true);
     try {
-      const loadedComments = await fetchComments(movie.imdbId);
-      setComments(loadedComments);
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+      const loadedComments = await fetchComments(groupId, movie.imdbId);
+      setComments(Array.isArray(loadedComments) ? loadedComments : []);
     } catch (error) {
       console.error('Error loading comments:', error);
       // If error, just set empty array
@@ -80,12 +85,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     }
   }, [movie.imdbId]);
 
-  // Set default user immediately when modal opens (fast, no async)
-  useEffect(() => {
-    if (isOpen && users.length > 0 && !newCommentUserId) {
-      setNewCommentUserId(users[0].id);
-    }
-  }, [isOpen, users, newCommentUserId]);
+  // No longer needed - comments are always created by current user
 
   // Load comments when modal opens - defer to next tick to not block rendering
   useEffect(() => {
@@ -102,7 +102,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setEditingCommentId(null);
       setEditingCommentText('');
       setNewCommentText('');
-      setNewCommentUserId('');
       setShowAddCommentForm(false);
       setWatched(movie.watched || false);
       setWatchedAt(movie.watchedAt || '');
@@ -197,7 +196,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
     setSavingComment(true);
     try {
-      await updateComment(commentId, trimmedComment);
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+      await updateComment(groupId, movie.imdbId, commentId, trimmedComment);
       await loadComments();
       setEditingCommentId(null);
       setEditingCommentText('');
@@ -220,15 +224,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const handleAddComment = async () => {
     const trimmedComment = newCommentText.trim();
     
-    if (!newCommentUserId) {
-      toast({
-        title: "Error",
-        description: "Please select a user.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
     if (!trimmedComment || trimmedComment.length === 0) {
       toast({
         title: "Error",
@@ -238,9 +233,15 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       return;
     }
 
+    const groupId = getGroupId();
+    if (!groupId) {
+      handleUnauthorized("No group selected. Please log in again.");
+      return;
+    }
+
     setAddingComment(true);
     try {
-      await createComment(newCommentUserId, movie.imdbId, trimmedComment);
+      await createComment(groupId, movie.imdbId, trimmedComment);
       await loadComments();
       setNewCommentText('');
       setShowAddCommentForm(false);
@@ -267,7 +268,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
     setDeletingCommentId(commentId);
     try {
-      await deleteComment(commentId);
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+      await deleteComment(groupId, movie.imdbId, commentId);
       await loadComments();
       toast({
         title: "Comment deleted",
@@ -288,13 +294,20 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const handleSave = async () => {
     setSaving(true);
     try {
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+
       // Save ratings if there are any changes
       const ratingPromises = Object.entries(userRatings).map(async ([userId, ratingData]) => {
         if (ratingData.rating >= 0) {
           return saveOrUpdateRating({
+            groupId: groupId,
             titleId: movie.imdbId,
-            userId: userId,
             note: ratingData.rating,
+            userId: userId,
           }, ratings);
         }
         return null;
@@ -312,7 +325,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
       // Update watched status if it changed
       if (watched !== movie.watched || watchedAt !== movie.watchedAt) {
-        await updateMovieWatchedStatus(GROUP_ID, movie.imdbId, watched, watchedAt || '');
+        const groupId = getGroupId();
+        if (!groupId) {
+          handleUnauthorized("No group selected. Please log in again.");
+          return;
+        }
+        await updateMovieWatchedStatus(groupId, movie.imdbId, watched, watchedAt || '');
         
         // Refresh movies to get the latest data from backend
         if (onRefreshMovies) {
@@ -353,7 +371,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     setDeleting(true);
     try {
       // Delete from backend
-      await deleteMovie(GROUP_ID, movie.imdbId);
+      const groupId = getGroupId();
+      if (!groupId) {
+        handleUnauthorized("No group selected. Please log in again.");
+        return;
+      }
+      await deleteMovie(groupId, movie.imdbId);
       
       // Update local state
       onDelete(movie.id);
@@ -529,97 +552,101 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 Ratings
               </h3>
               <div className="space-y-3">
-                {users.map((user, index) => (
-                  <div key={user.id} className="space-y-2">
-                    {index > 0 && <Separator className="bg-border" />}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium text-foreground">{user.name}</Label>
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-3">
-                          {editingUserId === user.id ? (
-                            <Input
-                              type="number"
-                              min="0"
-                              max="10"
-                              step="0.1"
-                              value={getUserRating(user.id)}
-                              onChange={(e) => {
-                                const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                if (!isNaN(value)) {
-                                  updateUserRating(user.id, Math.min(10, Math.max(0, value)));
-                                }
-                              }}
-                              className="w-20 bg-movie-surface border-border text-sm"
-                              placeholder="0.0"
-                              autoFocus
+                {users.map((user, index) => {
+                  const canEditRating = currentUserId && user.id === currentUserId;
+                  
+                  return (
+                    <div key={user.id} className="space-y-2">
+                      {index > 0 && <Separator className="bg-border" />}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-foreground">{user.name}</Label>
+                        <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center gap-3">
+                            {editingUserId === user.id ? (
+                              <Input
+                                type="number"
+                                min="0"
+                                max="10"
+                                step="0.1"
+                                value={getUserRating(user.id)}
+                                onChange={(e) => {
+                                  const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                  if (!isNaN(value)) {
+                                    updateUserRating(user.id, Math.min(10, Math.max(0, value)));
+                                  }
+                                }}
+                                className="w-20 bg-movie-surface border-border text-sm"
+                                placeholder="0.0"
+                                autoFocus
+                              />
+                            ) : (
+                              <div className="text-sm text-foreground">
+                                {getUserRating(user.id).toFixed(1)}
+                              </div>
+                            )}
+                            <StarRating 
+                              rating={getUserRating(user.id)} 
+                              readonly={true}
+                              size={20}
                             />
-                          ) : (
-                            <div className="text-sm text-foreground">
-                              {getUserRating(user.id).toFixed(1)}
-                            </div>
-                          )}
-                          <StarRating 
-                            rating={getUserRating(user.id)} 
-                            readonly={true}
-                            size={20}
-                          />
-                        </div>
-                        {editingUserId === user.id ? (
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                // Confirm: commit temp rating to userRatings
-                                if (tempUserRatings[user.id]) {
-                                  setUserRatings(prev => ({
-                                    ...prev,
-                                    [user.id]: tempUserRatings[user.id]
-                                  }));
-                                }
-                                setEditingUserId(null);
-                              }}
-                              className="h-6 w-6 p-0"
-                            >
-                              <Check className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                // Cancel: revert temp rating
-                                const updatedTemp = { ...tempUserRatings };
-                                delete updatedTemp[user.id];
-                                setTempUserRatings(updatedTemp);
-                                setEditingUserId(null);
-                              }}
-                              className="h-6 w-6 p-0"
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
                           </div>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              // Initialize temp rating with current value
-                              const currentRating = getUserRating(user.id);
-                              setTempUserRatings(prev => ({
-                                ...prev,
-                                [user.id]: { rating: currentRating }
-                              }));
-                              setEditingUserId(user.id);
-                            }}
-                            className="h-6 w-6 p-0"
-                          >
-                            <Edit3 className="h-3 w-3" />
-                          </Button>
-                        )}
+                          {canEditRating && editingUserId === user.id ? (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  // Confirm: commit temp rating to userRatings
+                                  if (tempUserRatings[user.id]) {
+                                    setUserRatings(prev => ({
+                                      ...prev,
+                                      [user.id]: tempUserRatings[user.id]
+                                    }));
+                                  }
+                                  setEditingUserId(null);
+                                }}
+                                className="h-6 w-6 p-0"
+                              >
+                                <Check className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  // Cancel: revert temp rating
+                                  const updatedTemp = { ...tempUserRatings };
+                                  delete updatedTemp[user.id];
+                                  setTempUserRatings(updatedTemp);
+                                  setEditingUserId(null);
+                                }}
+                                className="h-6 w-6 p-0"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : canEditRating ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                // Initialize temp rating with current value
+                                const currentRating = getUserRating(user.id);
+                                setTempUserRatings(prev => ({
+                                  ...prev,
+                                  [user.id]: { rating: currentRating }
+                                }));
+                                setEditingUserId(user.id);
+                              }}
+                              className="h-6 w-6 p-0"
+                            >
+                              <Edit3 className="h-3 w-3" />
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -659,7 +686,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   )}
                                 </div>
                               </div>
-                              {!isEditing && (
+                              {!isEditing && currentUserId && comment.userId === currentUserId && (
                                 <div className="flex items-center gap-1">
                                   <Button
                                     variant="ghost"
@@ -740,17 +767,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               {/* Add Comment Form */}
               {showAddCommentForm && (
                 <div className="space-y-2 pt-2 border-t border-border">
-                  <select
-                    value={newCommentUserId}
-                    onChange={(e) => setNewCommentUserId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-movie-blue"
-                  >
-                    {users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name}
-                      </option>
-                    ))}
-                  </select>
                   <Textarea
                     value={newCommentText}
                     onChange={(e) => setNewCommentText(e.target.value)}

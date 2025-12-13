@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User } from '@/types/movie';
 import { fetchUsers } from '@/services/backendService';
-import { GROUP_ID } from './useMovies';
+import { getGroupId, handleUnauthorized } from '@/services/authService';
 
 export const useUsers = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -13,7 +13,12 @@ export const useUsers = () => {
       setLoading(true);
       setError(null);
       try {
-        const fetchedUsers = await fetchUsers(GROUP_ID);
+        const groupId = getGroupId();
+        if (!groupId) {
+          handleUnauthorized('No group selected. Please log in again.');
+          return;
+        }
+        const fetchedUsers = await fetchUsers(groupId);
         setUsers(fetchedUsers);
       } catch (err) {
         console.error('Error loading users:', err);

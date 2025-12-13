@@ -7,7 +7,16 @@ import {
   CommentsResponse,
   PaginatedResponse,
   PaginationParams,
+  UserResponse,
+  GroupResponse,
 } from "@/types/movie";
+import {
+  getToken,
+  getTokenOrRedirect,
+  handleUnauthorized,
+  getErrorMessage,
+  getGroupId,
+} from "./authService";
 
 const API_BASE_URL = "/api";
 
@@ -45,10 +54,48 @@ interface BackendPaginatedResponse {
   Content: BackendMovie[];
 }
 
-interface AddMovieResponse {
-  error_message?: string;
-  status_code?: string;
+interface ErrorResponse {
+  statusCode?: number;
+  errorMessage?: string;
 }
+
+const authFetch = async (url: string, options: RequestInit = {}) => {
+  const token = getToken();
+  if (!token) {
+    // Only redirect if we're not already on the login page
+    if (window.location.pathname !== '/login') {
+      getTokenOrRedirect(); // This will redirect
+    }
+    throw new Error("Login required");
+  }
+
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  if (response.status === 401) {
+    try {
+      const data = await response.json();
+      const message = getErrorMessage(data) || "Session expired";
+      // Only redirect if we haven't already redirected
+      if (window.location.pathname !== '/login') {
+        handleUnauthorized(message);
+      }
+      throw new Error("Session expired");
+    } catch (err) {
+      // Only redirect if we haven't already redirected
+      if (window.location.pathname !== '/login') {
+        handleUnauthorized("Session expired");
+      }
+      throw err instanceof Error ? err : new Error("Session expired");
+    }
+  }
+
+  return response;
+};
 
 const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
   return {
@@ -99,10 +146,13 @@ export const fetchMovies = async (
       url += `?${searchParams.toString()}`;
     }
 
-    const response = await fetch(url);
+    const response = await authFetch(url);
 
     if (!response.ok) {
-      throw new Error("Failed to fetch movies from backend");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to fetch movies from backend";
+      console.error("Error fetching movies:", response.body);
+      throw new Error(message);
     }
 
     const data: BackendPaginatedResponse = await response.json();
@@ -136,7 +186,7 @@ export const addMovieToBackend = async (
   url: string
 ): Promise<{ error?: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/groups/titles`, {
+    const response = await authFetch(`${API_BASE_URL}/groups/titles`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -145,14 +195,10 @@ export const addMovieToBackend = async (
     });
 
     if (!response.ok) {
-      const responseText = await response.text();
-      // Try to parse as JSON, otherwise use the string directly
-      try {
-        const errorData: AddMovieResponse = JSON.parse(responseText);
-        return { error: errorData.error_message || "Failed to add movie" };
-      } catch {
-        return { error: responseText || "Failed to add movie" };
-      }
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to add movie";
+      console.log("Error adding movie:", errorData);
+      return { error: message };
     }
 
     // Success - API returns just a string notification
@@ -166,10 +212,13 @@ export const addMovieToBackend = async (
 
 export const fetchUsers = async (groupId: string): Promise<User[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/users`);
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/users`);
 
     if (!response.ok) {
-      throw new Error("Failed to fetch users from backend");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to fetch users";
+      console.log("Error fetching users:", errorData);
+      throw new Error(message);
     }
 
     const data: UsersResponse = await response.json();
@@ -187,7 +236,7 @@ export const updateRating = async (
   }
 ): Promise<Rating> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/ratings/${ratingId}`, {
+    const response = await authFetch(`${API_BASE_URL}/ratings/${ratingId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -196,7 +245,10 @@ export const updateRating = async (
     });
 
     if (!response.ok) {
-      throw new Error("Failed to update rating");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to update rating";
+      console.log("Error updating rating:", errorData);
+      throw new Error(message);
     }
 
     const rating: Rating = await response.json();
@@ -209,13 +261,15 @@ export const updateRating = async (
 
 export const saveOrUpdateRating = async (
   ratingData: {
+    groupId: string;
     titleId: string;
-    userId: string;
     note: number;
+    userId: string;
   },
   existingRatings: Rating[]
 ): Promise<Rating> => {
   // Check if rating already exists for this user and movie
+  // Note: We check by both userId and titleId to ensure we match the correct user's rating
   const existingRating = existingRatings.find(
     (rating) =>
       rating.titleId === ratingData.titleId &&
@@ -234,21 +288,28 @@ export const saveOrUpdateRating = async (
 };
 
 export const saveRating = async (ratingData: {
+  groupId: string;
   titleId: string;
-  userId: string;
   note: number;
 }): Promise<Rating> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/ratings`, {
+    const response = await authFetch(`${API_BASE_URL}/ratings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(ratingData),
+      body: JSON.stringify({
+        groupId: ratingData.groupId,
+        titleId: ratingData.titleId,
+        note: ratingData.note,
+      }),
     });
 
     if (!response.ok) {
-      throw new Error("Failed to save rating");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to save rating";
+      console.log("Error saving rating:", errorData);
+      throw new Error(message);
     }
 
     const rating: Rating = await response.json();
@@ -276,7 +337,7 @@ export const updateMovieWatchedStatus = async (
       body.watchedAt = '';
     }
 
-    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -285,7 +346,10 @@ export const updateMovieWatchedStatus = async (
     });
 
     if (!response.ok) {
-      throw new Error("Failed to update watched status");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to update watched status";
+      console.log("Error updating watched status:", errorData);
+      throw new Error(message);
     }
   } catch (error) {
     console.error("Error updating watched status:", error);
@@ -295,12 +359,15 @@ export const updateMovieWatchedStatus = async (
 
 export const deleteMovie = async (groupId: string, titleId: string): Promise<void> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}`, {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}`, {
       method: "DELETE",
     });
 
     if (!response.ok) {
-      throw new Error("Failed to delete movie");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to delete movie";
+      console.log("Error deleting movie:", errorData);
+      throw new Error(message);
     }
   } catch (error) {
     console.error("Error deleting movie:", error);
@@ -309,16 +376,19 @@ export const deleteMovie = async (groupId: string, titleId: string): Promise<voi
 };
 
 // Comments endpoints
-export const fetchComments = async (titleId: string): Promise<Comment[]> => {
+export const fetchComments = async (groupId: string, titleId: string): Promise<Comment[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/comments/${titleId}`);
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}/comments`);
 
     if (!response.ok) {
-      throw new Error("Failed to fetch comments from backend");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to fetch comments";
+      console.log("Error fetching comments:", errorData);
+      throw new Error(message);
     }
 
     const data: CommentsResponse = await response.json();
-    return data.comments;
+    return Array.isArray(data.comments) ? data.comments : [];
   } catch (error) {
     console.error("Error fetching comments:", error);
     throw error;
@@ -326,25 +396,28 @@ export const fetchComments = async (titleId: string): Promise<Comment[]> => {
 };
 
 export const createComment = async (
-  userId: string,
+  groupId: string,
   titleId: string,
   comment: string
 ): Promise<Comment> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/comments`, {
+    const response = await authFetch(`${API_BASE_URL}/comments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        userId,
+        groupId,
         titleId,
         comment,
       }),
     });
 
     if (!response.ok) {
-      throw new Error("Failed to create comment");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to create comment";
+      console.log("Error creating comment:", errorData);
+      throw new Error(message);
     }
 
     const commentData: Comment = await response.json();
@@ -356,11 +429,13 @@ export const createComment = async (
 };
 
 export const updateComment = async (
+  groupId: string,
+  titleId: string,
   commentId: string,
   comment: string
 ): Promise<Comment> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/comments/${commentId}`, {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}/comments/${commentId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -369,7 +444,10 @@ export const updateComment = async (
     });
 
     if (!response.ok) {
-      throw new Error("Failed to update comment");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to update comment";
+      console.log("Error updating comment:", errorData);
+      throw new Error(message);
     }
 
     const commentData: Comment = await response.json();
@@ -380,17 +458,178 @@ export const updateComment = async (
   }
 };
 
-export const deleteComment = async (commentId: string): Promise<void> => {
+export const deleteComment = async (groupId: string, titleId: string, commentId: string): Promise<void> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/comments/${commentId}`, {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}/comments/${commentId}`, {
       method: "DELETE",
     });
 
     if (!response.ok) {
-      throw new Error("Failed to delete comment");
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to delete comment";
+      console.log("Error deleting comment:", errorData);
+      throw new Error(message);
     }
   } catch (error) {
     console.error("Error deleting comment:", error);
+    throw error;
+  }
+};
+
+// User endpoints
+export const fetchUserById = async (userId: string): Promise<UserResponse> => {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/users/${userId}`);
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to fetch user";
+      console.log("Error fetching user:", errorData);
+      throw new Error(message);
+    }
+
+    const user: UserResponse = await response.json();
+    return user;
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    throw error;
+  }
+};
+
+// Group management endpoints
+export interface Group {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt?: string;
+  memberCount?: number;
+}
+
+export interface CreateGroupRequest {
+  name: string;
+  description?: string;
+}
+
+export interface UpdateGroupRequest {
+  name?: string;
+  description?: string;
+}
+
+export const fetchGroupById = async (groupId: string): Promise<GroupResponse> => {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}`);
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to fetch group";
+      console.log("Error fetching group:", errorData);
+      throw new Error(message);
+    }
+
+    const group: GroupResponse = await response.json();
+    return group;
+  } catch (error) {
+    console.error("Error fetching group:", error);
+    throw error;
+  }
+};
+
+export const fetchGroups = async (): Promise<Group[]> => {
+  // TODO: Implement when GET /api/groups endpoint is available
+  // For now, fetch individual groups using fetchGroupById
+  throw new Error("Endpoint not yet implemented");
+};
+
+export const createGroup = async (groupData: CreateGroupRequest): Promise<Group> => {
+  // TODO: Implement when POST /api/groups endpoint is available
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(groupData),
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to create group";
+      console.log("Error creating group:", errorData);
+      throw new Error(message);
+    }
+
+    const group: Group = await response.json();
+    return group;
+  } catch (error) {
+    console.error("Error creating group:", error);
+    throw error;
+  }
+};
+
+export const updateGroup = async (groupId: string, groupData: UpdateGroupRequest): Promise<Group> => {
+  // TODO: Implement when PATCH /api/groups/{groupId} endpoint is available
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(groupData),
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to update group";
+      console.log("Error updating group:", errorData);
+      throw new Error(message);
+    }
+
+    const group: Group = await response.json();
+    return group;
+  } catch (error) {
+    console.error("Error updating group:", error);
+    throw error;
+  }
+};
+
+export const deleteGroup = async (groupId: string): Promise<void> => {
+  // TODO: Implement when DELETE /api/groups/{groupId} endpoint is available
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to delete group";
+      console.log("Error deleting group:", errorData);
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.error("Error deleting group:", error);
+    throw error;
+  }
+};
+
+export const inviteToGroup = async (groupId: string, email: string): Promise<void> => {
+  // TODO: Implement when POST /api/groups/{groupId}/invite endpoint is available
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/invite`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to invite user";
+      console.log("Error inviting user:", errorData);
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.error("Error inviting user:", error);
     throw error;
   }
 };
