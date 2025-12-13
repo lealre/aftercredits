@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment } from '@/services/backendService';
-import { getGroupId, handleUnauthorized, getLoginData } from '@/services/authService';
+import { getGroupId, handleUnauthorized, getUserId } from '@/services/authService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -36,8 +36,7 @@ interface MovieModalProps {
 
 export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById, ratings, getRatingForUser }: MovieModalProps) => {
   const { toast } = useToast();
-  const loginData = getLoginData();
-  const currentUserId = loginData?.id;
+  const currentUserId = getUserId();
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);

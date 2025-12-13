@@ -7,8 +7,11 @@ import {
   CommentsResponse,
   PaginatedResponse,
   PaginationParams,
+  UserResponse,
+  GroupResponse,
 } from "@/types/movie";
 import {
+  getToken,
   getTokenOrRedirect,
   handleUnauthorized,
   getErrorMessage,
@@ -57,8 +60,12 @@ interface ErrorResponse {
 }
 
 const authFetch = async (url: string, options: RequestInit = {}) => {
-  const token = getTokenOrRedirect();
+  const token = getToken();
   if (!token) {
+    // Only redirect if we're not already on the login page
+    if (window.location.pathname !== '/login') {
+      getTokenOrRedirect(); // This will redirect
+    }
     throw new Error("Login required");
   }
 
@@ -73,10 +80,16 @@ const authFetch = async (url: string, options: RequestInit = {}) => {
     try {
       const data = await response.json();
       const message = getErrorMessage(data) || "Session expired";
-      handleUnauthorized(message);
-      throw new Error(message);
+      // Only redirect if we haven't already redirected
+      if (window.location.pathname !== '/login') {
+        handleUnauthorized(message);
+      }
+      throw new Error("Session expired");
     } catch (err) {
-      handleUnauthorized("Session expired");
+      // Only redirect if we haven't already redirected
+      if (window.location.pathname !== '/login') {
+        handleUnauthorized("Session expired");
+      }
       throw err instanceof Error ? err : new Error("Session expired");
     }
   }
@@ -463,9 +476,27 @@ export const deleteComment = async (groupId: string, titleId: string, commentId:
   }
 };
 
-// Group management endpoints
-// TODO: Implement these when backend endpoints are available
+// User endpoints
+export const fetchUserById = async (userId: string): Promise<UserResponse> => {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/users/${userId}`);
 
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to fetch user";
+      console.log("Error fetching user:", errorData);
+      throw new Error(message);
+    }
+
+    const user: UserResponse = await response.json();
+    return user;
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    throw error;
+  }
+};
+
+// Group management endpoints
 export interface Group {
   id: string;
   name: string;
@@ -484,9 +515,28 @@ export interface UpdateGroupRequest {
   description?: string;
 }
 
+export const fetchGroupById = async (groupId: string): Promise<GroupResponse> => {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}`);
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to fetch group";
+      console.log("Error fetching group:", errorData);
+      throw new Error(message);
+    }
+
+    const group: GroupResponse = await response.json();
+    return group;
+  } catch (error) {
+    console.error("Error fetching group:", error);
+    throw error;
+  }
+};
+
 export const fetchGroups = async (): Promise<Group[]> => {
   // TODO: Implement when GET /api/groups endpoint is available
-  // For now, groups are available from loginData
+  // For now, fetch individual groups using fetchGroupById
   throw new Error("Endpoint not yet implemented");
 };
 

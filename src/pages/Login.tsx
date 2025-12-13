@@ -73,7 +73,7 @@ const Login = () => {
       } else {
         toast({
           title: "No groups found",
-          description: "Redirecting to groups setup",
+          description: "Please select or create a group",
         });
         navigate("/groups", { replace: true });
       }

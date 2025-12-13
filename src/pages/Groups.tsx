@@ -4,14 +4,15 @@ import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
-  clearToken,
-  getLoginData,
+  getUserId,
   getToken,
-  LoginSuccess,
   saveGroupId,
   getGroupId,
+  handleUnauthorized,
 } from "@/services/authService";
-import { Users, Check, Plus, Edit, Trash2, UserPlus, Loader2 } from "lucide-react";
+import { fetchUserById, fetchGroupById } from "@/services/backendService";
+import { UserResponse, GroupResponse } from "@/types/movie";
+import { Users, Check, Plus, Edit, Trash2, UserPlus, Loader2, Crown } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -19,21 +20,75 @@ import { Separator } from "@/components/ui/separator";
 const Groups = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const loginData: LoginSuccess | undefined = getLoginData();
-  const token = loginData?.accessToken || getToken();
   const [activeGroupId, setActiveGroupId] = useState<string | null>(getGroupId());
   const [loading, setLoading] = useState(false);
+  const [loadingGroups, setLoadingGroups] = useState(true);
+  const [groups, setGroups] = useState<GroupResponse[]>([]);
+  const [userData, setUserData] = useState<UserResponse | null>(null);
 
   useEffect(() => {
-    if (!token) {
+    // Check if we have token and userId
+    const currentToken = getToken();
+    const currentUserId = getUserId();
+    
+    if (!currentToken || !currentUserId) {
+      console.log("Groups page: Missing token or userId", { token: currentToken, userId: currentUserId });
       toast({
         title: "Login required",
         description: "Please sign in to view your groups.",
         variant: "destructive",
       });
       navigate("/login", { replace: true });
+      return;
     }
-  }, [navigate, toast, token]);
+
+    const loadGroups = async () => {
+      setLoadingGroups(true);
+      try {
+        // First fetch user data to get list of group IDs
+        const user = await fetchUserById(currentUserId);
+        setUserData(user);
+
+        if (!user.groups || user.groups.length === 0) {
+          setGroups([]);
+          setLoadingGroups(false);
+          return;
+        }
+
+        // Fetch details for each group
+        const groupPromises = user.groups.map((groupId) => fetchGroupById(groupId));
+        const fetchedGroups = await Promise.all(groupPromises);
+        setGroups(fetchedGroups);
+      } catch (error) {
+        console.error("Error loading groups:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to load groups";
+        
+        // Check if we're already being redirected (authFetch handles 401 redirects)
+        if (window.location.pathname === '/login') {
+          // Already redirected, don't do anything
+          return;
+        }
+        
+        // Only redirect to login if it's an authentication error
+        if (errorMessage.includes("Login required") || errorMessage.includes("Session expired") || errorMessage.includes("401")) {
+          // authFetch already handles 401 redirects, but if we get here with a "Login required" error,
+          // it means getTokenOrRedirect() was called and redirected, so we should just return
+          return;
+        }
+        
+        // For other errors, just show a toast
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      } finally {
+        setLoadingGroups(false);
+      }
+    };
+
+    loadGroups();
+  }, [navigate, toast]);
 
   useEffect(() => {
     const currentGroupId = getGroupId();
@@ -96,11 +151,14 @@ const Groups = () => {
     });
   };
 
-  if (!token || !loginData) {
+  // Check authentication status
+  const token = getToken();
+  const userId = getUserId();
+  
+  if (!token || !userId) {
+    // This will be handled by the useEffect, but we need to return early to prevent rendering
     return null;
   }
-
-  const groups = loginData.groups || [];
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -132,7 +190,16 @@ const Groups = () => {
             </div>
           )}
 
-          {groups.length === 0 ? (
+          {loadingGroups ? (
+            <Card className="bg-movie-surface/60 border border-border/60">
+              <CardContent className="pt-6">
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="w-12 h-12 animate-spin text-movie-blue mb-4" />
+                  <p className="text-lg font-medium text-foreground">Loading groups...</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : groups.length === 0 ? (
             <Card className="bg-movie-surface/60 border border-border/60">
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -153,11 +220,12 @@ const Groups = () => {
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {groups.map((groupId) => {
-                const isActive = activeGroupId === groupId;
+              {groups.map((group) => {
+                const isActive = activeGroupId === group.id;
+                const isOwner = group.ownerId === userId;
                 return (
                   <Card
-                    key={groupId}
+                    key={group.id}
                     className={`bg-movie-surface/60 border ${
                       isActive
                         ? "border-movie-blue ring-2 ring-movie-blue/20"
@@ -165,26 +233,41 @@ const Groups = () => {
                     } transition-all hover:shadow-lg`}
                   >
                     <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="flex items-center gap-2">
-                            <Users className="h-5 w-5 text-movie-blue" />
-                            {groupId}
+                      <div className="flex items-start gap-2">
+                        <Users className="h-5 w-5 text-movie-blue mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="flex items-center gap-2 flex-wrap">
+                            <span className="truncate">{group.name}</span>
+                            {isActive && (
+                              <Badge className="bg-movie-blue text-movie-blue-foreground flex-shrink-0">
+                                <Check className="mr-1 h-3 w-3" />
+                                Active
+                              </Badge>
+                            )}
+                            {isOwner && (
+                              <Badge variant="outline" className="flex-shrink-0 border-movie-gold/50 text-movie-gold">
+                                <Crown className="mr-1 h-3 w-3" />
+                                Owner
+                              </Badge>
+                            )}
+                            {!isOwner && (
+                              <Badge variant="outline" className="flex-shrink-0">
+                                Participant
+                              </Badge>
+                            )}
                           </CardTitle>
-                          <CardDescription className="mt-1">
-                            Group ID: {groupId}
+                          <CardDescription className="mt-1 truncate" title={group.id}>
+                            ID: {group.id}
                           </CardDescription>
                         </div>
-                        {isActive && (
-                          <Badge className="bg-movie-blue text-movie-blue-foreground">
-                            <Check className="mr-1 h-3 w-3" />
-                            Active
-                          </Badge>
-                        )}
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground">Members</p>
+                          <p className="text-xs font-medium text-foreground">{group.users?.length || 0} member{(group.users?.length || 0) !== 1 ? 's' : ''}</p>
+                        </div>
                         <p className="text-xs text-muted-foreground">Status</p>
                         <p className="text-sm text-foreground">
                           {isActive
@@ -198,7 +281,7 @@ const Groups = () => {
                       <div className="flex flex-col gap-2">
                         {!isActive && (
                           <Button
-                            onClick={() => handleSelectGroup(groupId)}
+                            onClick={() => handleSelectGroup(group.id)}
                             className="w-full bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
                             disabled={loading}
                           >
@@ -210,8 +293,9 @@ const Groups = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleEditGroup(groupId)}
+                            onClick={() => handleEditGroup(group.id)}
                             className="text-xs"
+                            disabled={!isOwner}
                           >
                             <Edit className="mr-1 h-3 w-3" />
                             Edit
@@ -219,8 +303,9 @@ const Groups = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleInviteToGroup(groupId)}
+                            onClick={() => handleInviteToGroup(group.id)}
                             className="text-xs"
+                            disabled={!isOwner}
                           >
                             <UserPlus className="mr-1 h-3 w-3" />
                             Invite
@@ -229,11 +314,12 @@ const Groups = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleDeleteGroup(groupId)}
+                          onClick={() => handleDeleteGroup(group.id)}
                           className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                          disabled={!isOwner}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Delete Group
+                          {isOwner ? "Delete Group" : "Leave Group"}
                         </Button>
                       </div>
                     </CardContent>
