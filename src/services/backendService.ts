@@ -251,14 +251,16 @@ export const saveOrUpdateRating = async (
     groupId: string;
     titleId: string;
     note: number;
+    userId: string;
   },
   existingRatings: Rating[]
 ): Promise<Rating> => {
   // Check if rating already exists for this user and movie
-  // Note: We still check by userId from existingRatings, but send groupId in the request
+  // Note: We check by both userId and titleId to ensure we match the correct user's rating
   const existingRating = existingRatings.find(
     (rating) =>
-      rating.titleId === ratingData.titleId
+      rating.titleId === ratingData.titleId &&
+      rating.userId === ratingData.userId
   );
 
   if (existingRating) {
