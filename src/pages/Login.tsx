@@ -92,7 +92,7 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-gradient-hero">
-      <Header movieCount={0} />
+      <Header />
       <main className="container mx-auto px-4 py-10 flex items-center justify-center">
         <div className="w-full max-w-lg">
           <div className="bg-movie-surface/60 border border-border/60 rounded-lg shadow-xl p-6 sm:p-8 space-y-6">

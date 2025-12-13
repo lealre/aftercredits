@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import UserAccount from "./pages/UserAccount";
+import Groups from "./pages/Groups";
 import { Navigate } from "react-router-dom";
 import NotFound from "./pages/NotFound";
 
@@ -20,6 +21,7 @@ const App = () => (
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/account" element={<UserAccount />} />
+          <Route path="/groups" element={<Groups />} />
           <Route path="/watchlist" element={<Index />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

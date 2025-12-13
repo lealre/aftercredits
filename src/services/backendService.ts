@@ -460,3 +460,124 @@ export const deleteComment = async (groupId: string, titleId: string, commentId:
     throw error;
   }
 };
+
+// Group management endpoints
+// TODO: Implement these when backend endpoints are available
+
+export interface Group {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt?: string;
+  memberCount?: number;
+}
+
+export interface CreateGroupRequest {
+  name: string;
+  description?: string;
+}
+
+export interface UpdateGroupRequest {
+  name?: string;
+  description?: string;
+}
+
+export const fetchGroups = async (): Promise<Group[]> => {
+  // TODO: Implement when GET /api/groups endpoint is available
+  // For now, groups are available from loginData
+  throw new Error("Endpoint not yet implemented");
+};
+
+export const createGroup = async (groupData: CreateGroupRequest): Promise<Group> => {
+  // TODO: Implement when POST /api/groups endpoint is available
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(groupData),
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to create group";
+      console.log("Error creating group:", errorData);
+      throw new Error(message);
+    }
+
+    const group: Group = await response.json();
+    return group;
+  } catch (error) {
+    console.error("Error creating group:", error);
+    throw error;
+  }
+};
+
+export const updateGroup = async (groupId: string, groupData: UpdateGroupRequest): Promise<Group> => {
+  // TODO: Implement when PATCH /api/groups/{groupId} endpoint is available
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(groupData),
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to update group";
+      console.log("Error updating group:", errorData);
+      throw new Error(message);
+    }
+
+    const group: Group = await response.json();
+    return group;
+  } catch (error) {
+    console.error("Error updating group:", error);
+    throw error;
+  }
+};
+
+export const deleteGroup = async (groupId: string): Promise<void> => {
+  // TODO: Implement when DELETE /api/groups/{groupId} endpoint is available
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to delete group";
+      console.log("Error deleting group:", errorData);
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.error("Error deleting group:", error);
+    throw error;
+  }
+};
+
+export const inviteToGroup = async (groupId: string, email: string): Promise<void> => {
+  // TODO: Implement when POST /api/groups/{groupId}/invite endpoint is available
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/invite`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to invite user";
+      console.log("Error inviting user:", errorData);
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.error("Error inviting user:", error);
+    throw error;
+  }
+};

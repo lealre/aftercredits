@@ -4,7 +4,6 @@ import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
-  clearToken,
   getLoginData,
   getToken,
   LoginSuccess,
@@ -37,18 +36,9 @@ const UserAccount = () => {
     }
   }, [navigate, toast, token]);
 
-  const handleLogout = () => {
-    clearToken();
-    toast({
-      title: "Logged out",
-      description: "You have been logged out successfully.",
-    });
-    navigate("/login", { replace: true });
-  };
-
   return (
     <div className="min-h-screen bg-gradient-hero">
-      <Header movieCount={0} onLogout={handleLogout} showLogout />
+      <Header />
       <main className="container mx-auto px-4 py-10">
         <div className="bg-movie-surface/60 border border-border/60 rounded-lg shadow-xl p-6 sm:p-8 space-y-4">
           <div className="space-y-2">
@@ -98,15 +88,6 @@ const UserAccount = () => {
               No token found. Redirecting to login...
             </p>
           )}
-
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
-            <Button
-              onClick={handleLogout}
-              className="w-full sm:w-auto bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
-            >
-              Logout
-            </Button>
-          </div>
         </div>
       </main>
     </div>
