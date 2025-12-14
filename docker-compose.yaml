@@ -1,0 +1,55 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: movies-mongo
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-root}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-example}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh -u \"$MONGO_INITDB_ROOT_USERNAME\" -p \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand(\"ping\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo-indexes:
+    image: lealre/aftercredits-backend:latest
+    env_file:
+      - .env
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command: ["/app/indexes"]
+    restart: "no"
+
+  backend:
+    image: lealre/aftercredits-backend:latest
+    env_file:
+      - .env
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mongo-indexes:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    container_name: movies-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8081:80"
+
+volumes:
+  mongo_data:
