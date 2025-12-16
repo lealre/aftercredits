@@ -1,73 +1,14 @@
-# Welcome to your Lovable project
+# AfterCredits
 
-## Project info
+This project consists of a web app to register, rate and comment on the movies/series that you and your beloveds/family/friends have seen together, based mainly on the IMDb API.
 
-**URL**: https://lovable.dev/projects/3d6be273-ca71-4465-b846-e7c2b35d55a0
+![App Image](media/app-image.png)
 
-## How can I edit this code?
+It's currently under development, and it lacks most of the features related to creating/editing groups/users. 
 
-There are several ways of editing your application.
+The main idea is to allow users to create groups, and within these private groups, you can register when you watched a movie and share your opinions and ratings. In the future, it will also display metrics such as which categories or years of movies you have watched the most.
 
-**Use Lovable**
+This repository consists of the frontend, with the backend image being pulled from Docker Hub ([lealre/aftercredits-backend](https://hub.docker.com/repository/docker/lealre/aftercredits-backend/general)).
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/3d6be273-ca71-4465-b846-e7c2b35d55a0) and start prompting.
+It uses MongoDB as the database and [Golang for the backend](https://github.com/lealre/aftercredits-backend).
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/3d6be273-ca71-4465-b846-e7c2b35d55a0) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
