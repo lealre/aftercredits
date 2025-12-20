@@ -591,7 +591,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     <div key={user.id} className="space-y-2">
                       {index > 0 && <Separator className="bg-border" />}
                       <div className="space-y-2">
-                        <Label className="text-sm font-medium text-foreground">{user.name}</Label>
+                        <Label className="text-sm font-medium text-foreground">{user.name && user.name.trim() !== "" ? user.name : user.username}</Label>
                         <div className="flex items-center justify-between w-full">
                           <div className="flex items-center gap-3">
                             {editingUserId === user.id ? (

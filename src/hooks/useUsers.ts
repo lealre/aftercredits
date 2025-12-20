@@ -40,7 +40,8 @@ export const useUsers = () => {
 
   const getUserNameById = (userId: string): string => {
     const user = getUserById(userId);
-    return user ? user.name : 'Unknown User';
+    if (!user) return 'Unknown User';
+    return user.name && user.name.trim() !== "" ? user.name : user.username;
   };
 
   return {

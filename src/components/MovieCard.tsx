@@ -115,7 +115,7 @@ export const MovieCard = ({
               const userRating = apiRating ? apiRating.rating : 0;
               return (
                 <div key={user.id} className="flex items-center gap-2 text-xs">
-                  <span className="text-muted-foreground">{user.name}:</span>
+                  <span className="text-muted-foreground">{user.name && user.name.trim() !== "" ? user.name : user.username}:</span>
                   <StarRating rating={userRating} readonly size={16} />
                 </div>
               );

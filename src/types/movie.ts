@@ -43,7 +43,8 @@ export interface CommentsResponse {
 
 export interface User {
   id: string;
-  name: string;
+  name?: string;
+  username: string;
 }
 
 export interface UsersResponse {

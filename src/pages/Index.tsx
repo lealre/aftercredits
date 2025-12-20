@@ -13,6 +13,7 @@ import { fetchGroupById, fetchUserById } from '@/services/backendService';
 import { GroupResponse } from '@/types/movie';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { CreateGroupModal } from '@/components/CreateGroupModal';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ const Index = () => {
   const [allGroups, setAllGroups] = useState<GroupResponse[]>([]);
   const [hasNoGroups, setHasNoGroups] = useState(false);
   const [loadingGroups, setLoadingGroups] = useState(true);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   
   // Convert filter to boolean or undefined for the API
   const watchedFilterValue = watchedFilter === 'all' ? undefined : watchedFilter === 'watched';
@@ -131,6 +133,48 @@ const Index = () => {
     }
   };
 
+  const handleGroupCreated = async () => {
+    // Refresh groups list
+    try {
+      setLoadingGroups(true);
+      setHasNoGroups(false);
+      
+      const userId = getUserId();
+      if (!userId) {
+        navigate('/login', { replace: true });
+        return;
+      }
+
+      // Fetch user to get all group IDs
+      const user = await fetchUserById(userId);
+      if (!user.groups || user.groups.length === 0) {
+        setHasNoGroups(true);
+        setAllGroups([]);
+        setGroupData(null);
+        setLoadingGroups(false);
+        return;
+      }
+
+      // Fetch details for all groups
+      const groupPromises = user.groups.map((gId) => fetchGroupById(gId));
+      const fetchedGroups = await Promise.all(groupPromises);
+      setAllGroups(fetchedGroups);
+
+      // Auto-select the newly created group (should be the last one)
+      if (fetchedGroups.length > 0) {
+        const newGroup = fetchedGroups[fetchedGroups.length - 1];
+        saveGroupId(newGroup.id);
+        setGroupData(newGroup);
+        await refreshMovies();
+      }
+    } catch (error) {
+      console.error('Error refreshing groups:', error);
+      setHasNoGroups(true);
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
+
   // Show empty state if user has no groups
   if (hasNoGroups && !loadingGroups) {
     return (
@@ -144,10 +188,17 @@ const Index = () => {
                 You don't have any groups yet. Create a group to start managing your watchlist.
               </CardDescription>
             </CardHeader>
-            <CardContent className="pt-4">
+            <CardContent className="pt-4 space-y-2">
+              <Button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="w-full bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
+              >
+                Create Group
+              </Button>
               <Button
                 onClick={() => navigate('/groups')}
-                className="w-full bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
+                variant="outline"
+                className="w-full"
               >
                 Go to Groups
               </Button>
@@ -215,6 +266,11 @@ const Index = () => {
           </>
         )}
       </main>
+      <CreateGroupModal
+        open={isCreateModalOpen}
+        onOpenChange={setIsCreateModalOpen}
+        onSuccess={handleGroupCreated}
+      />
     </div>
   );
 };

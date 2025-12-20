@@ -16,6 +16,7 @@ import { Users, Check, Plus, Edit, Trash2, UserPlus, Loader2, Crown } from "luci
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { CreateGroupModal } from "@/components/CreateGroupModal";
 
 const Groups = () => {
   const navigate = useNavigate();
@@ -25,6 +26,7 @@ const Groups = () => {
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [groups, setGroups] = useState<GroupResponse[]>([]);
   const [userData, setUserData] = useState<UserResponse | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   useEffect(() => {
     // Check if we have token and userId
@@ -120,11 +122,52 @@ const Groups = () => {
   };
 
   const handleCreateGroup = () => {
-    // TODO: Implement when backend endpoint is available
-    toast({
-      title: "Coming soon",
-      description: "Group creation will be available soon.",
-    });
+    setIsCreateModalOpen(true);
+  };
+
+  const handleGroupCreated = async () => {
+    // Refresh groups list
+    const currentUserId = getUserId();
+    if (!currentUserId) {
+      return;
+    }
+
+    try {
+      setLoadingGroups(true);
+      const user = await fetchUserById(currentUserId);
+      setUserData(user);
+
+      if (!user.groups || user.groups.length === 0) {
+        setGroups([]);
+        setLoadingGroups(false);
+        return;
+      }
+
+      // Fetch details for each group
+      const groupPromises = user.groups.map((groupId) => fetchGroupById(groupId));
+      const fetchedGroups = await Promise.all(groupPromises);
+      setGroups(fetchedGroups);
+
+      // Auto-select the newly created group (should be the last one)
+      if (fetchedGroups.length > 0) {
+        const newGroup = fetchedGroups[fetchedGroups.length - 1];
+        saveGroupId(newGroup.id);
+        setActiveGroupId(newGroup.id);
+        toast({
+          title: "Group selected",
+          description: `"${newGroup.name}" is now your active group.`,
+        });
+      }
+    } catch (error) {
+      console.error("Error refreshing groups:", error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh groups list.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingGroups(false);
+    }
   };
 
   const handleEditGroup = (groupId: string) => {
@@ -349,6 +392,11 @@ const Groups = () => {
           )}
         </div>
       </main>
+      <CreateGroupModal
+        open={isCreateModalOpen}
+        onOpenChange={setIsCreateModalOpen}
+        onSuccess={handleGroupCreated}
+      />
     </div>
   );
 };
