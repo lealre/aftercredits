@@ -2,6 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowUpDown, Filter, ChevronDown } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { GroupResponse } from '@/types/movie';
 
 interface FilterControlsProps {
   watchedFilter: 'all' | 'watched' | 'unwatched';
@@ -11,6 +19,9 @@ interface FilterControlsProps {
   onOrderByChange: (orderBy: string | undefined) => void;
   ascending: boolean;
   onAscendingChange: (ascending: boolean) => void;
+  groups: GroupResponse[];
+  currentGroupId: string | null;
+  onGroupChange: (groupId: string) => void;
 }
 
 const sortOptions = [
@@ -30,6 +41,9 @@ export const FilterControls = ({
   onOrderByChange,
   ascending,
   onAscendingChange,
+  groups,
+  currentGroupId,
+  onGroupChange,
 }: FilterControlsProps) => {
   const [open, setOpen] = useState(false);
   const [pendingOrderBy, setPendingOrderBy] = useState<string | undefined>(orderBy);
@@ -194,9 +208,36 @@ export const FilterControls = ({
             )}
           </div>
         </div>
-        <Badge variant="secondary" className="bg-movie-surface border-movie-blue/30 text-xs sm:text-sm w-fit sm:w-auto">
-          {movieCount} movies
-        </Badge>
+        <div className="flex items-center gap-2">
+          {orderBy && (
+            <Badge variant="secondary" className="bg-movie-surface border-movie-blue/30 text-xs sm:text-sm">
+              Order: {sortOptions.find((opt) => opt.value === orderBy)?.label || orderBy} ({ascending ? 'Asc' : 'Desc'})
+            </Badge>
+          )}
+          <Badge variant="secondary" className="bg-movie-surface border-movie-blue/30 text-xs sm:text-sm w-fit sm:w-auto">
+            {movieCount} movies
+          </Badge>
+          {groups.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">Group:</span>
+              <Select
+                value={currentGroupId || undefined}
+                onValueChange={onGroupChange}
+              >
+                <SelectTrigger className="h-9 rounded-md px-3 text-xs sm:text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors">
+                  <SelectValue placeholder="Select group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((group) => (
+                    <SelectItem key={group.id} value={group.id} className="text-xs sm:text-sm">
+                      {group.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -8,11 +8,15 @@ import { AddMovieForm } from '@/components/AddMovieForm';
 import { MovieGrid } from '@/components/MovieGrid';
 import { FilterControls } from '@/components/FilterControls';
 import { Loader2 } from 'lucide-react';
-import { getGroupId } from '@/services/authService';
+import { getGroupId, getUserId, saveGroupId } from '@/services/authService';
+import { fetchGroupById, fetchUserById } from '@/services/backendService';
+import { GroupResponse } from '@/types/movie';
 
 const Index = () => {
   const navigate = useNavigate();
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
+  const [groupData, setGroupData] = useState<GroupResponse | null>(null);
+  const [allGroups, setAllGroups] = useState<GroupResponse[]>([]);
   
   // Convert filter to boolean or undefined for the API
   const watchedFilterValue = watchedFilter === 'all' ? undefined : watchedFilter === 'watched';
@@ -46,13 +50,68 @@ const Index = () => {
     const groupId = getGroupId();
     if (!groupId) {
       navigate('/groups', { replace: true });
+      return;
     }
+
+    // Fetch all user groups and current group information
+    const loadGroups = async () => {
+      try {
+        const userId = getUserId();
+        if (!userId) {
+          navigate('/login', { replace: true });
+          return;
+        }
+
+        // Fetch user to get all group IDs
+        const user = await fetchUserById(userId);
+        if (!user.groups || user.groups.length === 0) {
+          navigate('/groups', { replace: true });
+          return;
+        }
+
+        // Fetch details for all groups
+        const groupPromises = user.groups.map((gId) => fetchGroupById(gId));
+        const fetchedGroups = await Promise.all(groupPromises);
+        setAllGroups(fetchedGroups);
+
+        // Set current group data
+        const currentGroup = fetchedGroups.find((g) => g.id === groupId);
+        if (currentGroup) {
+          setGroupData(currentGroup);
+        } else {
+          // If current group not found, use first group
+          if (fetchedGroups.length > 0) {
+            saveGroupId(fetchedGroups[0].id);
+            setGroupData(fetchedGroups[0]);
+            refreshMovies();
+          }
+        }
+      } catch (error) {
+        console.error('Error loading groups:', error);
+      }
+    };
+
+    loadGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
   const refreshRatingsForTitle = useCallback(async (titleId: string) => {
     // Refresh movies to get updated ratings
     await refreshMovies();
   }, [refreshMovies]);
+
+  const handleGroupChange = async (newGroupId: string) => {
+    try {
+      saveGroupId(newGroupId);
+      const newGroup = allGroups.find((g) => g.id === newGroupId);
+      if (newGroup) {
+        setGroupData(newGroup);
+        await refreshMovies();
+      }
+    } catch (error) {
+      console.error('Error changing group:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -73,6 +132,9 @@ const Index = () => {
           onOrderByChange={setOrderBy}
           ascending={ascending}
           onAscendingChange={setAscending}
+          groups={allGroups}
+          currentGroupId={getGroupId()}
+          onGroupChange={handleGroupChange}
         />
         
         {loading && (
