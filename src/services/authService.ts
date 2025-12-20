@@ -22,7 +22,19 @@ export interface LoginResponse {
 
 export interface LoginSuccess extends LoginResponse {}
 
-type ErrorResponse =
+export interface NewUserRequest {
+  username?: string;
+  name?: string;
+  email?: string;
+  password: string;
+}
+
+export interface ErrorResponse {
+  statusCode: number;
+  errorMessage: string;
+}
+
+type ErrorResponseType =
   | { statusCode?: number; errorMessage?: string };
 
 const redirectToLogin = (message?: string) => {
@@ -51,7 +63,7 @@ export const login = async (payload: LoginRequest): Promise<LoginSuccess> => {
   if (!response.ok) {
     let message = "Login failed";
     try {
-      const errorBody: ErrorResponse = await response.json();
+      const errorBody: ErrorResponseType = await response.json();
       message =
         (errorBody as any)?.errorMessage ||
         message;
@@ -127,5 +139,56 @@ export const getErrorMessage = (data: unknown) => {
     (data as any).error ||
     ""
   );
+};
+
+export const createUser = async (payload: NewUserRequest): Promise<void> => {
+  const { username, email, password, name } = payload;
+  
+  // Validation: either username or email must not be empty
+  if (!username && !email) {
+    throw new Error("Either username or email must be provided");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      username: username || undefined,
+      email: email || undefined,
+      password,
+      name: name || undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    let message = "Error creating user";
+    
+    // Handle 400 errors specifically
+    if (response.status === 400) {
+      try {
+        const errorBody: ErrorResponse = await response.json();
+        if (errorBody?.errorMessage) {
+          message = errorBody.errorMessage;
+        }
+      } catch {
+        // If parsing fails, use the generic fallback message
+        message = "Error creating user";
+      }
+    } else {
+      // For other errors, try to parse but fallback to generic message
+      try {
+        const errorBody: ErrorResponse = await response.json();
+        if (errorBody?.errorMessage) {
+          message = errorBody.errorMessage;
+        }
+      } catch {
+        message = "Error creating user";
+      }
+    }
+    
+    throw new Error(message);
+  }
 };
 

@@ -1,21 +1,24 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
-  clearToken,
   getToken,
+  createUser,
   login,
   saveLoginData,
+  clearToken,
 } from "@/services/authService";
 
-const Login = () => {
+const SignUp = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const [usernameOrEmail, setUsernameOrEmail] = useState("");
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -26,26 +29,19 @@ const Login = () => {
     }
   }, [navigate]);
 
-  useEffect(() => {
-    const errorMessage = searchParams.get("error");
-    if (errorMessage) {
-      toast({
-        title: "Login required",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
-  }, [searchParams, toast]);
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!usernameOrEmail.trim()) {
+    
+    // Validation: either username or email must not be empty
+    if (!username.trim() && !email.trim()) {
       toast({
-        title: "Username or email is required",
+        title: "Validation error",
+        description: "Either username or email must be provided",
         variant: "destructive",
       });
       return;
     }
+
     if (!password) {
       toast({
         title: "Password is required",
@@ -56,32 +52,46 @@ const Login = () => {
 
     setSubmitting(true);
     try {
-      const isEmail = usernameOrEmail.includes("@");
-      const data = await login({
-        username: isEmail ? undefined : usernameOrEmail.trim(),
-        email: isEmail ? usernameOrEmail.trim() : undefined,
+      await createUser({
+        name: name.trim() || undefined,
+        username: username.trim() || undefined,
+        email: email.trim() || undefined,
         password,
       });
-      saveLoginData(data);
-      const firstGroup = data.groups?.[0];
+      
+      // Automatically log in after successful registration
+      const loginData = await login({
+        username: username.trim() || undefined,
+        email: email.trim() || undefined,
+        password,
+      });
+      
+      saveLoginData(loginData);
+      const firstGroup = loginData.groups?.[0];
+      
       if (firstGroup) {
         toast({
-          title: "Login successful",
+          title: "Account created successfully",
           description: "Redirecting to your watchlist",
         });
         navigate("/watchlist", { replace: true });
       } else {
         toast({
-          title: "No groups found",
+          title: "Account created successfully",
           description: "Please select or create a group",
         });
         navigate("/groups", { replace: true });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Login failed";
+      let errorMessage = "Error creating user";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
       toast({
-        title: "Login failed",
-        description: message,
+        title: "Registration failed",
+        description: errorMessage,
         variant: "destructive",
       });
       clearToken();
@@ -97,31 +107,59 @@ const Login = () => {
         <div className="w-full max-w-lg">
           <div className="bg-movie-surface/60 border border-border/60 rounded-lg shadow-xl p-6 sm:p-8 space-y-6">
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-foreground">Welcome back</h2>
+              <h2 className="text-2xl font-bold text-foreground">Create an account</h2>
               <p className="text-sm text-muted-foreground">
-                Use your username or email to sign in.
+                Sign up to start managing your watchlist.
               </p>
             </div>
 
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Username or Email
-                </label>
+                <Label htmlFor="name" className="text-sm font-medium text-foreground">
+                  Name (optional)
+                </Label>
                 <Input
-                  value={usernameOrEmail}
-                  onChange={(e) => setUsernameOrEmail(e.target.value)}
-                  placeholder="yourname or you@example.com"
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name"
                   disabled={submitting}
-                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Password
-                </label>
+                <Label htmlFor="username" className="text-sm font-medium text-foreground">
+                  Username
+                </Label>
                 <Input
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="yourusername"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-sm font-medium text-foreground">
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium text-foreground">
+                  Password
+                </Label>
+                <Input
+                  id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -136,7 +174,7 @@ const Login = () => {
                 className="w-full bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
                 disabled={submitting}
               >
-                {submitting ? "Signing in..." : "Sign in"}
+                {submitting ? "Creating account..." : "Sign up"}
               </Button>
             </form>
 
@@ -145,10 +183,10 @@ const Login = () => {
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => navigate("/signup")}
+                onClick={() => navigate("/login")}
                 disabled={submitting}
               >
-                Sign up
+                Back to sign in
               </Button>
             </div>
           </div>
@@ -158,5 +196,4 @@ const Login = () => {
   );
 };
 
-export default Login;
-
+export default SignUp;
