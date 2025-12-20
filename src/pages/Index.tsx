@@ -11,12 +11,16 @@ import { Loader2 } from 'lucide-react';
 import { getGroupId, getUserId, saveGroupId } from '@/services/authService';
 import { fetchGroupById, fetchUserById } from '@/services/backendService';
 import { GroupResponse } from '@/types/movie';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
   const navigate = useNavigate();
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
   const [groupData, setGroupData] = useState<GroupResponse | null>(null);
   const [allGroups, setAllGroups] = useState<GroupResponse[]>([]);
+  const [hasNoGroups, setHasNoGroups] = useState(false);
+  const [loadingGroups, setLoadingGroups] = useState(true);
   
   // Convert filter to boolean or undefined for the API
   const watchedFilterValue = watchedFilter === 'all' ? undefined : watchedFilter === 'watched';
@@ -47,14 +51,11 @@ const Index = () => {
   }, [ratingsMap]);
 
   useEffect(() => {
-    const groupId = getGroupId();
-    if (!groupId) {
-      navigate('/groups', { replace: true });
-      return;
-    }
-
     // Fetch all user groups and current group information
     const loadGroups = async () => {
+      setLoadingGroups(true);
+      setHasNoGroups(false);
+      
       try {
         const userId = getUserId();
         if (!userId) {
@@ -65,7 +66,10 @@ const Index = () => {
         // Fetch user to get all group IDs
         const user = await fetchUserById(userId);
         if (!user.groups || user.groups.length === 0) {
-          navigate('/groups', { replace: true });
+          setHasNoGroups(true);
+          setAllGroups([]);
+          setGroupData(null);
+          setLoadingGroups(false);
           return;
         }
 
@@ -74,20 +78,34 @@ const Index = () => {
         const fetchedGroups = await Promise.all(groupPromises);
         setAllGroups(fetchedGroups);
 
+        // Check if we have a selected group
+        let groupId = getGroupId();
+        
+        // If no group selected, auto-select the first group
+        if (!groupId && fetchedGroups.length > 0) {
+          groupId = fetchedGroups[0].id;
+          saveGroupId(groupId);
+        }
+
         // Set current group data
-        const currentGroup = fetchedGroups.find((g) => g.id === groupId);
-        if (currentGroup) {
-          setGroupData(currentGroup);
-        } else {
-          // If current group not found, use first group
-          if (fetchedGroups.length > 0) {
-            saveGroupId(fetchedGroups[0].id);
-            setGroupData(fetchedGroups[0]);
-            refreshMovies();
+        if (groupId) {
+          const currentGroup = fetchedGroups.find((g) => g.id === groupId);
+          if (currentGroup) {
+            setGroupData(currentGroup);
+          } else {
+            // If current group not found, use first group
+            if (fetchedGroups.length > 0) {
+              saveGroupId(fetchedGroups[0].id);
+              setGroupData(fetchedGroups[0]);
+              refreshMovies();
+            }
           }
         }
       } catch (error) {
         console.error('Error loading groups:', error);
+        setHasNoGroups(true);
+      } finally {
+        setLoadingGroups(false);
       }
     };
 
@@ -113,54 +131,89 @@ const Index = () => {
     }
   };
 
+  // Show empty state if user has no groups
+  if (hasNoGroups && !loadingGroups) {
+    return (
+      <div className="min-h-screen bg-gradient-hero">
+        <Header />
+        <main className="container mx-auto px-4 py-8 flex items-center justify-center min-h-[calc(100vh-200px)]">
+          <Card className="w-full max-w-md p-6 bg-movie-surface/60 border border-border/60">
+            <CardHeader>
+              <CardTitle className="text-2xl font-bold text-foreground">No Groups Available</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground mt-2">
+                You don't have any groups yet. Create a group to start managing your watchlist.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <Button
+                onClick={() => navigate('/groups')}
+                className="w-full bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
+              >
+                Go to Groups
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-hero">
       <Header />
       
       <main className="container mx-auto px-4 py-8 space-y-8">
-        <AddMovieForm 
-          onRefresh={refreshMovies}
-          loading={adding} 
-          setLoading={setAdding} 
-        />
-        
-        <FilterControls
-          watchedFilter={watchedFilter}
-          onWatchedFilterChange={setWatchedFilter}
-          movieCount={pagination.totalResults}
-          orderBy={orderBy}
-          onOrderByChange={setOrderBy}
-          ascending={ascending}
-          onAscendingChange={setAscending}
-          groups={allGroups}
-          currentGroupId={getGroupId()}
-          onGroupChange={handleGroupChange}
-        />
-        
-        {loading && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="w-12 h-12 animate-spin text-movie-blue" />
-              <p className="text-lg font-medium text-foreground">Loading movies...</p>
-            </div>
+        {loadingGroups ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-movie-blue" />
           </div>
+        ) : (
+          <>
+            <AddMovieForm 
+              onRefresh={refreshMovies}
+              loading={adding} 
+              setLoading={setAdding} 
+            />
+            
+            <FilterControls
+              watchedFilter={watchedFilter}
+              onWatchedFilterChange={setWatchedFilter}
+              movieCount={pagination.totalResults}
+              orderBy={orderBy}
+              onOrderByChange={setOrderBy}
+              ascending={ascending}
+              onAscendingChange={setAscending}
+              groups={allGroups}
+              currentGroupId={getGroupId()}
+              onGroupChange={handleGroupChange}
+            />
+            
+            {loading && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-12 h-12 animate-spin text-movie-blue" />
+                  <p className="text-lg font-medium text-foreground">Loading movies...</p>
+                </div>
+              </div>
+            )}
+            
+            <MovieGrid 
+              movies={movies} 
+              onUpdate={updateMovie} 
+              onDelete={deleteMovie} 
+              onRefreshMovies={refreshMovies}
+              users={users}
+              getUserNameById={getUserNameById}
+              ratingsMap={ratingsMap}
+              getRatingForUser={getRatingForUser}
+              refreshRatingsForTitle={refreshRatingsForTitle}
+              pagination={pagination}
+              onPageChange={changePage}
+              onPageSizeChange={changePageSize}
+              loading={loading}
+            />
+          </>
         )}
-        
-        <MovieGrid 
-          movies={movies} 
-          onUpdate={updateMovie} 
-          onDelete={deleteMovie} 
-          onRefreshMovies={refreshMovies}
-          users={users}
-          getUserNameById={getUserNameById}
-          ratingsMap={ratingsMap}
-          getRatingForUser={getRatingForUser}
-          refreshRatingsForTitle={refreshRatingsForTitle}
-          pagination={pagination}
-          onPageChange={changePage}
-          onPageSizeChange={changePageSize}
-          loading={loading}
-        />
       </main>
     </div>
   );

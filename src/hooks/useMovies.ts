@@ -43,7 +43,9 @@ export const useMovies = (watchedFilter?: boolean) => {
 
         const groupId = getGroupId();
         if (!groupId) {
-          handleUnauthorized("No group selected. Please log in again.");
+          // No group selected - return early without setting error
+          // Let the component handle the UI state
+          setLoading(false);
           return;
         }
 

@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment } from '@/services/backendService';
-import { getGroupId, handleUnauthorized, getUserId } from '@/services/authService';
+import { getGroupId, getUserId } from '@/services/authService';
 
 interface MovieModalProps {
   movie: Movie;
@@ -71,7 +71,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     try {
       const groupId = getGroupId();
       if (!groupId) {
-        handleUnauthorized("No group selected. Please log in again.");
+        // No group selected - just set empty comments
+        setComments([]);
+        setLoadingComments(false);
         return;
       }
       const loadedComments = await fetchComments(groupId, movie.imdbId);
@@ -198,7 +200,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     try {
       const groupId = getGroupId();
       if (!groupId) {
-        handleUnauthorized("No group selected. Please log in again.");
+        toast({
+          title: "No group selected",
+          description: "Please select a group to update comments.",
+          variant: "destructive",
+        });
+        setSavingComment(false);
         return;
       }
       await updateComment(groupId, movie.imdbId, commentId, trimmedComment);
@@ -235,7 +242,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
     const groupId = getGroupId();
     if (!groupId) {
-      handleUnauthorized("No group selected. Please log in again.");
+      toast({
+        title: "No group selected",
+        description: "Please select a group to add comments.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -270,7 +281,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     try {
       const groupId = getGroupId();
       if (!groupId) {
-        handleUnauthorized("No group selected. Please log in again.");
+        toast({
+          title: "No group selected",
+          description: "Please select a group to delete comments.",
+          variant: "destructive",
+        });
+        setDeletingCommentId(null);
         return;
       }
       await deleteComment(groupId, movie.imdbId, commentId);
@@ -296,7 +312,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     try {
       const groupId = getGroupId();
       if (!groupId) {
-        handleUnauthorized("No group selected. Please log in again.");
+        toast({
+          title: "No group selected",
+          description: "Please select a group to save changes.",
+          variant: "destructive",
+        });
+        setSaving(false);
         return;
       }
 
@@ -327,7 +348,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       if (watched !== movie.watched || watchedAt !== movie.watchedAt) {
         const groupId = getGroupId();
         if (!groupId) {
-          handleUnauthorized("No group selected. Please log in again.");
+          toast({
+            title: "No group selected",
+            description: "Please select a group to update watched status.",
+            variant: "destructive",
+          });
+          setSaving(false);
           return;
         }
         await updateMovieWatchedStatus(groupId, movie.imdbId, watched, watchedAt || '');
@@ -373,7 +399,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       // Delete from backend
       const groupId = getGroupId();
       if (!groupId) {
-        handleUnauthorized("No group selected. Please log in again.");
+        toast({
+          title: "No group selected",
+          description: "Please select a group to delete movies.",
+          variant: "destructive",
+        });
+        setDeleting(false);
+        setShowDeleteModal(false);
         return;
       }
       await deleteMovie(groupId, movie.imdbId);

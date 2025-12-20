@@ -9,6 +9,7 @@ import {
   getToken,
   login,
   saveLoginData,
+  saveGroupId,
 } from "@/services/authService";
 
 const Login = () => {
@@ -65,18 +66,20 @@ const Login = () => {
       saveLoginData(data);
       const firstGroup = data.groups?.[0];
       if (firstGroup) {
+        // Auto-select the first group
+        saveGroupId(firstGroup);
         toast({
           title: "Login successful",
           description: "Redirecting to your watchlist",
         });
-        navigate("/watchlist", { replace: true });
       } else {
         toast({
-          title: "No groups found",
-          description: "Please select or create a group",
+          title: "Login successful",
+          description: "Redirecting to your watchlist",
         });
-        navigate("/groups", { replace: true });
       }
+      // Always navigate to watchlist (it will show no-groups message if needed)
+      navigate("/watchlist", { replace: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed";
       toast({

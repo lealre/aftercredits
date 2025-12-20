@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User } from '@/types/movie';
 import { fetchUsers } from '@/services/backendService';
-import { getGroupId, handleUnauthorized } from '@/services/authService';
+import { getGroupId } from '@/services/authService';
 
 export const useUsers = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -15,7 +15,10 @@ export const useUsers = () => {
       try {
         const groupId = getGroupId();
         if (!groupId) {
-          handleUnauthorized('No group selected. Please log in again.');
+          // No group selected - return early without setting error
+          // Let the component handle the UI state
+          setUsers([]);
+          setLoading(false);
           return;
         }
         const fetchedUsers = await fetchUsers(groupId);

@@ -11,6 +11,7 @@ import {
   login,
   saveLoginData,
   clearToken,
+  saveGroupId,
 } from "@/services/authService";
 
 const SignUp = () => {
@@ -70,18 +71,20 @@ const SignUp = () => {
       const firstGroup = loginData.groups?.[0];
       
       if (firstGroup) {
+        // Auto-select the first group
+        saveGroupId(firstGroup);
         toast({
           title: "Account created successfully",
           description: "Redirecting to your watchlist",
         });
-        navigate("/watchlist", { replace: true });
       } else {
         toast({
           title: "Account created successfully",
-          description: "Please select or create a group",
+          description: "Redirecting to your watchlist",
         });
-        navigate("/groups", { replace: true });
       }
+      // Always navigate to watchlist (it will show no-groups message if needed)
+      navigate("/watchlist", { replace: true });
     } catch (error) {
       let errorMessage = "Error creating user";
       
