@@ -9,7 +9,8 @@ services:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-mongouser}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-mongopass}
     volumes:
-      - mongo_data:/data/db
+      - /mnt/usb_storage/aftercredits_db:/data/db
+      - /mnt/usb_storage/aftercredits_config_db:/data/configdb
     healthcheck:
       test: ["CMD-SHELL", "mongosh -u \"$MONGO_INITDB_ROOT_USERNAME\" -p \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand(\"ping\")'"]
       interval: 10s
@@ -52,7 +53,3 @@ services:
       - backend
     ports:
       - "8081:80"
-
-volumes:
-  mongo_data:
-   name: aftercredits-mongo-data
