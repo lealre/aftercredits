@@ -1,3 +1,22 @@
+export interface Season {
+  season: string;
+  episodeCount: number;
+}
+
+export interface ReleaseDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+export interface Episode {
+  id: string;
+  title: string;
+  season: string;
+  episodeNumber: number;
+  releaseDate?: ReleaseDate;
+}
+
 export interface Movie {
   id: string;
   imdbId: string;
@@ -14,6 +33,8 @@ export interface Movie {
   watched?: boolean;
   watchedAt?: string;
   addedDate: string;
+  seasons?: Season[];
+  episodes?: Episode[];
 }
 
 export interface Rating {
@@ -21,6 +42,7 @@ export interface Rating {
   titleId: string;
   userId: string;
   note: number;
+  seasonsRatings?: Record<string, number>; // season number -> rating
   // comments field removed - now in separate endpoint
 }
 

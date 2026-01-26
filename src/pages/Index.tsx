@@ -49,7 +49,7 @@ const Index = () => {
   const getRatingForUser = useCallback((titleId: string, userId: string) => {
     const list = ratingsMap[titleId] || [];
     const r = list.find(x => x.userId === userId);
-    return r ? { rating: r.note } : undefined;
+    return r ? { rating: r.note, seasonsRatings: r.seasonsRatings } : undefined;
   }, [ratingsMap]);
 
   useEffect(() => {

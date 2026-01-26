@@ -20,6 +20,32 @@ import {
 
 const API_BASE_URL = "/api";
 
+interface BackendSeason {
+  season: string;
+  episodeCount: number;
+}
+
+interface BackendReleaseDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+interface BackendEpisode {
+  id: string;
+  title: string;
+  season: string;
+  episodeNumber: number;
+  releaseDate?: BackendReleaseDate;
+}
+
+interface BackendSeasonWatched {
+  watched: boolean;
+  watchedAt?: string;
+  addedAt: string;
+  updatedAt: string;
+}
+
 interface BackendMovie {
   id: string;
   primaryTitle: string;
@@ -41,6 +67,9 @@ interface BackendMovie {
   writersNames: string[];
   starsNames: string[];
   originCountries: string[];
+  seasons?: BackendSeason[];
+  episodes?: BackendEpisode[];
+  seasonsWatched?: Record<string, BackendSeasonWatched>;
   groupRatings: Rating[] | null;
   watched: boolean;
   watchedAt?: string;
@@ -114,6 +143,18 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
     addedDate: new Date().toISOString().split("T")[0],
     watched: backendMovie.watched,
     watchedAt: backendMovie.watchedAt,
+    seasons: backendMovie.seasons,
+    episodes: backendMovie.episodes?.map(ep => ({
+      id: ep.id,
+      title: ep.title,
+      season: ep.season,
+      episodeNumber: ep.episodeNumber,
+      releaseDate: ep.releaseDate ? {
+        year: ep.releaseDate.year,
+        month: ep.releaseDate.month,
+        day: ep.releaseDate.day,
+      } : undefined,
+    })),
   };
 };
 
@@ -233,15 +274,21 @@ export const updateRating = async (
   ratingId: string,
   ratingData: {
     note: number;
+    season?: number;
   }
 ): Promise<Rating> => {
   try {
+    const body: { note: number; season?: number } = { note: ratingData.note };
+    if (ratingData.season !== undefined) {
+      body.season = ratingData.season;
+    }
+    
     const response = await authFetch(`${API_BASE_URL}/ratings/${ratingId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(ratingData),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -265,6 +312,7 @@ export const saveOrUpdateRating = async (
     titleId: string;
     note: number;
     userId: string;
+    season?: number;
   },
   existingRatings: Rating[]
 ): Promise<Rating> => {
@@ -280,6 +328,7 @@ export const saveOrUpdateRating = async (
     // Update existing rating
     return updateRating(existingRating.id, {
       note: ratingData.note,
+      season: ratingData.season,
     });
   } else {
     // Create new rating
@@ -291,18 +340,24 @@ export const saveRating = async (ratingData: {
   groupId: string;
   titleId: string;
   note: number;
+  season?: number;
 }): Promise<Rating> => {
   try {
+    const body: { groupId: string; titleId: string; note: number; season?: number } = {
+      groupId: ratingData.groupId,
+      titleId: ratingData.titleId,
+      note: ratingData.note,
+    };
+    if (ratingData.season !== undefined) {
+      body.season = ratingData.season;
+    }
+    
     const response = await authFetch(`${API_BASE_URL}/ratings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        groupId: ratingData.groupId,
-        titleId: ratingData.titleId,
-        note: ratingData.note,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -324,10 +379,11 @@ export const updateMovieWatchedStatus = async (
   groupId: string,
   titleId: string,
   watched: boolean,
-  watchedAt: string
+  watchedAt: string,
+  season?: number
 ): Promise<void> => {
   try {
-    const body: { titleId: string; watched: boolean; watchedAt: string } = { 
+    const body: { titleId: string; watched: boolean; watchedAt: string; season?: number } = { 
       titleId, 
       watched, 
       watchedAt 
@@ -335,6 +391,9 @@ export const updateMovieWatchedStatus = async (
     if (!watched) {
       console.log('Setting watchedAt to empty string for title ID', titleId);
       body.watchedAt = '';
+    }
+    if (season !== undefined) {
+      body.season = season;
     }
 
     const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
