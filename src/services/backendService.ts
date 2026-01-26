@@ -457,19 +457,25 @@ export const fetchComments = async (groupId: string, titleId: string): Promise<C
 export const createComment = async (
   groupId: string,
   titleId: string,
-  comment: string
+  comment: string,
+  season?: number
 ): Promise<Comment> => {
   try {
+    const body: { groupId: string; titleId: string; comment: string; season?: number } = {
+      groupId,
+      titleId,
+      comment,
+    };
+    if (season !== undefined) {
+      body.season = season;
+    }
+    
     const response = await authFetch(`${API_BASE_URL}/comments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        groupId,
-        titleId,
-        comment,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -491,15 +497,21 @@ export const updateComment = async (
   groupId: string,
   titleId: string,
   commentId: string,
-  comment: string
+  comment: string,
+  season?: number
 ): Promise<Comment> => {
   try {
+    const body: { comment: string; season?: number } = { comment };
+    if (season !== undefined) {
+      body.season = season;
+    }
+    
     const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}/comments/${commentId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ comment }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {

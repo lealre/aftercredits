@@ -95,7 +95,28 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         return;
       }
       const loadedComments = await fetchComments(groupId, movie.imdbId);
-      setComments(Array.isArray(loadedComments) ? loadedComments : []);
+      // Filter comments by season for TV series
+      if (isTVSeries && selectedSeason) {
+        const filteredComments = loadedComments
+          .filter(comment => {
+            // For TV series, show comments that have a comment for this season
+            return comment.seasonsComments && comment.seasonsComments[selectedSeason] !== undefined;
+          })
+          .map(comment => ({
+            ...comment,
+            comment: comment.seasonsComments?.[selectedSeason] || comment.comment || '',
+          }));
+        setComments(Array.isArray(filteredComments) ? filteredComments : []);
+      } else {
+        // For movies, show regular comments
+        const movieComments = loadedComments
+          .filter(comment => comment.comment !== undefined && comment.comment !== null)
+          .map(comment => ({
+            ...comment,
+            comment: comment.comment || '',
+          }));
+        setComments(Array.isArray(movieComments) ? movieComments : []);
+      }
     } catch (error) {
       console.error('Error loading comments:', error);
       // If error, just set empty array
@@ -103,11 +124,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     } finally {
       setLoadingComments(false);
     }
-  }, [movie.imdbId]);
+  }, [movie.imdbId, isTVSeries, selectedSeason]);
 
   // No longer needed - comments are always created by current user
 
-  // Load comments when modal opens - defer to next tick to not block rendering
+  // Load comments when modal opens or season changes - defer to next tick to not block rendering
   useEffect(() => {
     if (isOpen) {
       // Use setTimeout to defer to next event loop tick, allowing modal to render first
@@ -130,7 +151,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setEditingUserId(null);
       setTempUserRatings({});
     }
-  }, [isOpen, loadComments, movie.watched, movie.watchedAt]);
+  }, [isOpen, loadComments, movie.watched, movie.watchedAt, selectedSeason]);
 
   const updateUserRating = (userId: string, rating: number) => {
     if (editingUserId === userId) {
@@ -214,7 +235,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
   const handleEditComment = (comment: Comment) => {
     setEditingCommentId(comment.id);
-    setEditingCommentText(comment.comment);
+    // For TV series, get the season-specific comment; for movies, use regular comment
+    const commentText = isTVSeries && selectedSeason && comment.seasonsComments
+      ? comment.seasonsComments[selectedSeason] || ''
+      : comment.comment || '';
+    setEditingCommentText(commentText);
   };
 
   const handleCancelEditComment = () => {
@@ -234,6 +259,16 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       return;
     }
 
+    // For TV series, ensure a season is selected
+    if (isTVSeries && !selectedSeason) {
+      toast({
+        title: "Season required",
+        description: "Please select a season before updating the comment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSavingComment(true);
     try {
       const groupId = getGroupId();
@@ -246,7 +281,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         setSavingComment(false);
         return;
       }
-      await updateComment(groupId, movie.imdbId, commentId, trimmedComment);
+      // For TV series, pass the selected season; for movies, don't pass season
+      const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
+      await updateComment(groupId, movie.imdbId, commentId, trimmedComment, season);
       await loadComments();
       setEditingCommentId(null);
       setEditingCommentText('');
@@ -278,6 +315,16 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       return;
     }
 
+    // For TV series, ensure a season is selected
+    if (isTVSeries && !selectedSeason) {
+      toast({
+        title: "Season required",
+        description: "Please select a season before adding a comment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const groupId = getGroupId();
     if (!groupId) {
       toast({
@@ -290,7 +337,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
     setAddingComment(true);
     try {
-      await createComment(groupId, movie.imdbId, trimmedComment);
+      // For TV series, pass the selected season; for movies, don't pass season
+      const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
+      await createComment(groupId, movie.imdbId, trimmedComment, season);
       await loadComments();
       setNewCommentText('');
       setShowAddCommentForm(false);

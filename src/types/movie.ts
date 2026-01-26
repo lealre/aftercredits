@@ -54,7 +54,8 @@ export interface Comment {
   id: string;
   titleId: string;
   userId: string;
-  comment: string;
+  comment?: string;
+  seasonsComments?: Record<string, string>; // season number -> comment text
   createdAt: string;
   updatedAt: string;
 }
