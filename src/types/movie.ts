@@ -17,6 +17,14 @@ export interface Episode {
   releaseDate?: ReleaseDate;
 }
 
+export interface SeasonWatched {
+  watched: boolean;
+  watchedAt?: string;
+  // backend may include these; keep optional so movies/older payloads still work
+  addedAt?: string;
+  updatedAt?: string;
+}
+
 export interface Movie {
   id: string;
   imdbId: string;
@@ -35,6 +43,7 @@ export interface Movie {
   addedDate: string;
   seasons?: Season[];
   episodes?: Episode[];
+  seasonsWatched?: Record<string, SeasonWatched>; // season number -> watched info
 }
 
 export interface Rating {

@@ -144,6 +144,7 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
     watched: backendMovie.watched,
     watchedAt: backendMovie.watchedAt,
     seasons: backendMovie.seasons,
+    seasonsWatched: backendMovie.seasonsWatched,
     episodes: backendMovie.episodes?.map(ep => ({
       id: ep.id,
       title: ep.title,

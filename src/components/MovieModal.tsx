@@ -75,14 +75,32 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     if (isOpen) {
       // Reset season selection when modal opens
       if (isTVSeries && movie.seasons && movie.seasons.length > 0) {
-        setSelectedSeason(movie.seasons[0].season);
+        const firstSeason = movie.seasons[0].season;
+        setSelectedSeason(firstSeason);
+
+        const seasonWatched = movie.seasonsWatched?.[firstSeason];
+        setWatched(seasonWatched?.watched ?? false);
+        setWatchedAt(seasonWatched?.watchedAt ?? '');
       } else {
         setSelectedSeason('');
+        setWatched(movie.watched || false);
+        setWatchedAt(movie.watchedAt || '');
       }
-      setWatched(movie.watched || false);
-      setWatchedAt(movie.watchedAt || '');
     }
-  }, [isOpen, movie.id, movie.watched, movie.watchedAt, isTVSeries, movie.seasons]); // Sync when modal opens or movie changes
+  }, [isOpen, movie.id, movie.watched, movie.watchedAt, movie.seasonsWatched, isTVSeries, movie.seasons]); // Sync when modal opens or movie changes
+
+  // When user changes season, update watched state to reflect that season (TV series only)
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!isTVSeries) return;
+    if (!selectedSeason) return;
+
+    const seasonWatched = movie.seasonsWatched?.[selectedSeason];
+    setWatched(seasonWatched?.watched ?? false);
+    setWatchedAt(seasonWatched?.watchedAt ?? '');
+    setIsEditingWatchedAt(false);
+    setTempWatchedAt('');
+  }, [isOpen, isTVSeries, selectedSeason, movie.seasonsWatched]);
 
   const loadComments = useCallback(async () => {
     setLoadingComments(true);
@@ -435,7 +453,16 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setUserRatings({});
 
       // Update watched status if it changed
-      if (watched !== movie.watched || watchedAt !== movie.watchedAt) {
+      const baselineWatched =
+        isTVSeries && selectedSeason
+          ? (movie.seasonsWatched?.[selectedSeason]?.watched ?? false)
+          : (movie.watched ?? false);
+      const baselineWatchedAt =
+        isTVSeries && selectedSeason
+          ? (movie.seasonsWatched?.[selectedSeason]?.watchedAt ?? '')
+          : (movie.watchedAt ?? '');
+
+      if (watched !== baselineWatched || watchedAt !== baselineWatchedAt) {
         const groupId = getGroupId();
         if (!groupId) {
           toast({
@@ -457,10 +484,19 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }
 
       // Save movie updates locally
-      const updates: Partial<Movie> = {
-        watched,
-        watchedAt: watchedAt || ''
-      };
+      const updates: Partial<Movie> = {};
+      if (isTVSeries && selectedSeason) {
+        updates.seasonsWatched = {
+          ...(movie.seasonsWatched || {}),
+          [selectedSeason]: {
+            watched,
+            watchedAt: watchedAt || undefined,
+          },
+        };
+      } else {
+        updates.watched = watched;
+        updates.watchedAt = watchedAt || '';
+      }
       
       onUpdate(movie.id, updates);
       
