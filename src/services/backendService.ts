@@ -548,6 +548,31 @@ export const deleteComment = async (groupId: string, titleId: string, commentId:
   }
 };
 
+// Delete a single season's comment for a TV series (keeps other seasons' comments intact)
+export const deleteCommentSeason = async (
+  groupId: string,
+  titleId: string,
+  commentId: string,
+  season: number
+): Promise<void> => {
+  try {
+    const response = await authFetch(
+      `${API_BASE_URL}/groups/${groupId}/titles/${titleId}/comments/${commentId}/seasons/${season}`,
+      { method: "DELETE" }
+    );
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to delete season comment";
+      console.log("Error deleting season comment:", errorData);
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.error("Error deleting season comment:", error);
+    throw error;
+  }
+};
+
 // User endpoints
 export const fetchUserById = async (userId: string): Promise<UserResponse> => {
   try {

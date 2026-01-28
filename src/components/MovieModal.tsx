@@ -24,7 +24,7 @@ import { Star, Trash2, ExternalLink, X, Edit3, XCircle, MessageCircle, Trash, Ch
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment } from '@/services/backendService';
+import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment, deleteCommentSeason } from '@/services/backendService';
 import { getGroupId, getUserId } from '@/services/authService';
 
 interface MovieModalProps {
@@ -378,7 +378,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   };
 
   const handleDeleteComment = async (commentId: string) => {
-    if (!window.confirm('Are you sure you want to delete this comment?')) {
+    const confirmMessage =
+      isTVSeries
+        ? 'Delete this season comment? (Other seasons will be kept)'
+        : 'Are you sure you want to delete this comment?';
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
@@ -394,7 +398,20 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         setDeletingCommentId(null);
         return;
       }
-      await deleteComment(groupId, movie.imdbId, commentId);
+      if (isTVSeries) {
+        if (!selectedSeason) {
+          toast({
+            title: "Season required",
+            description: "Please select a season before deleting a season comment.",
+            variant: "destructive",
+          });
+          setDeletingCommentId(null);
+          return;
+        }
+        await deleteCommentSeason(groupId, movie.imdbId, commentId, parseInt(selectedSeason, 10));
+      } else {
+        await deleteComment(groupId, movie.imdbId, commentId);
+      }
       await loadComments();
       toast({
         title: "Comment deleted",
