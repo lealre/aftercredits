@@ -590,7 +590,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col bg-movie-surface border-border p-0">
+      <DialogContent className="w-full max-w-3xl max-h-[90vh] flex flex-col bg-movie-surface border-border p-0">
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
           <DialogTitle className="text-movie-blue">{movie.title}</DialogTitle>
         </DialogHeader>
@@ -598,7 +598,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         <div className="flex-1 flex flex-col min-h-0">
           {/* On mobile: single scroll container, on desktop: grid with separate scrolls */}
           <div className="flex-1 overflow-y-auto px-3 pb-3 md:overflow-hidden md:flex md:flex-col">
-            <div className="flex flex-col md:grid md:grid-cols-2 gap-3 w-full md:flex-1 md:min-h-0">
+            <div className="flex flex-col md:grid md:[grid-template-columns:minmax(0,260px)_minmax(0,1fr)] gap-3 w-full md:flex-1 md:min-h-0">
               {/* Movie Info */}
               <div className="md:overflow-y-auto md:h-full space-y-4 md:px-3 md:pb-3">
                 {/* Hide poster on mobile */}
