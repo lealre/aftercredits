@@ -603,14 +603,27 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               <div className="md:overflow-y-auto md:h-full space-y-4 md:px-3 md:pb-3">
                 {/* Hide poster on mobile */}
                 <div className="hidden md:block aspect-[2/3] relative overflow-hidden rounded-lg">
-                  <img
-                    src={movie.poster}
-                    alt={movie.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.src = '/placeholder-movie.jpg';
-                    }}
-                  />
+                  {(() => {
+                    // For TV series, try to get the first episode image of the selected season
+                    let imageSrc = movie.poster;
+                    if (isTVSeries && selectedSeason && movie.episodes) {
+                      const seasonEpisodes = movie.episodes.filter(ep => ep.season === selectedSeason);
+                      const firstEpisode = seasonEpisodes.find(ep => ep.episodeNumber === 1) || seasonEpisodes[0];
+                      if (firstEpisode?.primaryImage?.url) {
+                        imageSrc = firstEpisode.primaryImage.url;
+                      }
+                    }
+                    return (
+                      <img
+                        src={imageSrc}
+                        alt={movie.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = '/placeholder-movie.jpg';
+                        }}
+                      />
+                    );
+                  })()}
                 </div>
                 
                 <div className="space-y-2">
@@ -644,9 +657,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
             {/* Season Selection for TV Series */}
             {isTVSeries && movie.seasons && movie.seasons.length > 0 && (
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-foreground">Season</Label>
                 <Select value={selectedSeason} onValueChange={setSelectedSeason}>
-                  <SelectTrigger className="w-full bg-movie-surface border-border">
+                  <SelectTrigger className="w-full bg-movie-surface border-border focus:border-ring focus-visible:border-ring focus:ring-0 focus-visible:ring-0">
                     <SelectValue placeholder="Select a season" />
                   </SelectTrigger>
                   <SelectContent>
@@ -659,16 +671,25 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 </Select>
                 {selectedSeason && (() => {
                   const selectedSeasonData = movie.seasons?.find(s => s.season === selectedSeason);
-                  // Find the first episode of the selected season to get the started date
-                  const firstEpisode = movie.episodes?.find(ep => ep.season === selectedSeason);
-                  const startedDate = firstEpisode?.releaseDate 
+                  // Find the first episode of the selected season (episodeNumber === 1 or first in array)
+                  const seasonEpisodes = movie.episodes?.filter(ep => ep.season === selectedSeason) || [];
+                  const firstEpisode = seasonEpisodes.find(ep => ep.episodeNumber === 1) || seasonEpisodes[0];
+                  const releaseDate = firstEpisode?.releaseDate 
                     ? new Date(firstEpisode.releaseDate.year, firstEpisode.releaseDate.month - 1, firstEpisode.releaseDate.day)
                     : null;
+                  
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const isFuture = releaseDate && releaseDate > today;
+                  
+                  const dateText = releaseDate 
+                    ? `${releaseDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+                    : '';
                   
                   return (
                     selectedSeasonData && (
                       <div className="text-sm text-muted-foreground">
-                        {selectedSeasonData.episodeCount} episodes{startedDate && ` - ${startedDate.toLocaleDateString('en-US', { month: 'short' })}/${startedDate.getFullYear()}`}
+                        {selectedSeasonData.episodeCount} episodes{dateText && ` • ${isFuture ? 'Releases at' : 'Released'} ${dateText}`}
                       </div>
                     )
                   );

@@ -9,11 +9,26 @@ export interface ReleaseDate {
   day: number;
 }
 
+export interface EpisodeRating {
+  aggregateRating: number;
+  voteCount: number;
+}
+
+export interface EpisodeImage {
+  url: string;
+  width: number;
+  height: number;
+}
+
 export interface Episode {
   id: string;
   title: string;
   season: string;
   episodeNumber: number;
+  primaryImage?: EpisodeImage;
+  runtimeSeconds?: number;
+  plot?: string;
+  rating?: EpisodeRating;
   releaseDate?: ReleaseDate;
 }
 

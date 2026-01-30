@@ -31,11 +31,26 @@ interface BackendReleaseDate {
   day: number;
 }
 
+interface BackendEpisodeRating {
+  aggregateRating: number;
+  voteCount: number;
+}
+
+interface BackendEpisodeImage {
+  url: string;
+  width: number;
+  height: number;
+}
+
 interface BackendEpisode {
   id: string;
   title: string;
   season: string;
   episodeNumber: number;
+  primaryImage?: BackendEpisodeImage;
+  runtimeSeconds?: number;
+  plot?: string;
+  rating?: BackendEpisodeRating;
   releaseDate?: BackendReleaseDate;
 }
 
@@ -150,6 +165,17 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
       title: ep.title,
       season: ep.season,
       episodeNumber: ep.episodeNumber,
+      primaryImage: ep.primaryImage ? {
+        url: ep.primaryImage.url,
+        width: ep.primaryImage.width,
+        height: ep.primaryImage.height,
+      } : undefined,
+      runtimeSeconds: ep.runtimeSeconds,
+      plot: ep.plot,
+      rating: ep.rating ? {
+        aggregateRating: ep.rating.aggregateRating,
+        voteCount: ep.rating.voteCount,
+      } : undefined,
       releaseDate: ep.releaseDate ? {
         year: ep.releaseDate.year,
         month: ep.releaseDate.month,
