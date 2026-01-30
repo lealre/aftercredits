@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Movie, User, Rating, Comment } from '@/types/movie';
 import {
   Dialog,
@@ -49,7 +49,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const isTVSeries = movie.type === 'tvSeries' || movie.type === 'tvMiniSeries';
   
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
-  const [comments, setComments] = useState<Comment[]>([]);
+  const [allComments, setAllComments] = useState<Comment[]>([]); // Store all comments from API
   const [loadingComments, setLoadingComments] = useState(false);
   // Initialize watched state directly from movie prop - update only when modal opens with new movie
   const [watched, setWatched] = useState(() => movie.watched || false);
@@ -108,45 +108,48 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       const groupId = getGroupId();
       if (!groupId) {
         // No group selected - just set empty comments
-        setComments([]);
+        setAllComments([]);
         setLoadingComments(false);
         return;
       }
       const loadedComments = await fetchComments(groupId, movie.imdbId);
-      // Filter comments by season for TV series
-      if (isTVSeries && selectedSeason) {
-        const filteredComments = loadedComments
-          .filter(comment => {
-            // For TV series, show comments that have a comment for this season
-            return comment.seasonsComments && comment.seasonsComments[selectedSeason] !== undefined;
-          })
-          .map(comment => ({
-            ...comment,
-            comment: comment.seasonsComments?.[selectedSeason] || comment.comment || '',
-          }));
-        setComments(Array.isArray(filteredComments) ? filteredComments : []);
-      } else {
-        // For movies, show regular comments
-        const movieComments = loadedComments
-          .filter(comment => comment.comment !== undefined && comment.comment !== null)
-          .map(comment => ({
-            ...comment,
-            comment: comment.comment || '',
-          }));
-        setComments(Array.isArray(movieComments) ? movieComments : []);
-      }
+      // Store all comments without filtering - we'll filter by season in display logic
+      setAllComments(Array.isArray(loadedComments) ? loadedComments : []);
     } catch (error) {
       console.error('Error loading comments:', error);
       // If error, just set empty array
-      setComments([]);
+      setAllComments([]);
     } finally {
       setLoadingComments(false);
     }
-  }, [movie.imdbId, isTVSeries, selectedSeason]);
+  }, [movie.imdbId]);
+
+  // Filter comments based on selected season (for display only)
+  const comments = useMemo(() => {
+    if (isTVSeries && selectedSeason) {
+      // For TV series, show comments that have a comment for this season
+      return allComments
+        .filter(comment => {
+          return comment.seasonsComments && comment.seasonsComments[selectedSeason] !== undefined;
+        })
+        .map(comment => ({
+          ...comment,
+          comment: comment.seasonsComments?.[selectedSeason] || comment.comment || '',
+        }));
+    } else {
+      // For movies, show regular comments
+      return allComments
+        .filter(comment => comment.comment !== undefined && comment.comment !== null)
+        .map(comment => ({
+          ...comment,
+          comment: comment.comment || '',
+        }));
+    }
+  }, [allComments, isTVSeries, selectedSeason]);
 
   // No longer needed - comments are always created by current user
 
-  // Load comments when modal opens or season changes - defer to next tick to not block rendering
+  // Load comments only when modal opens - defer to next tick to not block rendering
   useEffect(() => {
     if (isOpen) {
       // Use setTimeout to defer to next event loop tick, allowing modal to render first
@@ -156,7 +159,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       return () => clearTimeout(timer);
     } else {
       // Reset state when modal closes - revert to original movie data
-      setComments([]);
+      setAllComments([]);
       setUserRatings({});
       setEditingCommentId(null);
       setEditingCommentText('');
@@ -169,7 +172,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setEditingUserId(null);
       setTempUserRatings({});
     }
-  }, [isOpen, loadComments, movie.watched, movie.watchedAt, selectedSeason]);
+  }, [isOpen, loadComments]);
 
   const updateUserRating = (userId: string, rating: number) => {
     if (editingUserId === userId) {
