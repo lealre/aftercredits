@@ -447,7 +447,15 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }
 
       // Save ratings if there are any changes
-      const ratingPromises = Object.entries(userRatings).map(async ([userId, ratingData]) => {
+      // Include both confirmed ratings (userRatings) and temporary ratings (tempUserRatings) if still editing
+      const allRatingsToSave = { ...userRatings };
+      
+      // If a user is currently editing, use their temp rating value
+      if (editingUserId && tempUserRatings[editingUserId]) {
+        allRatingsToSave[editingUserId] = tempUserRatings[editingUserId];
+      }
+      
+      const ratingPromises = Object.entries(allRatingsToSave).map(async ([userId, ratingData]) => {
         if (ratingData.rating >= 0) {
           // For TV series, pass the selected season; for movies, don't pass season
           const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
@@ -469,10 +477,24 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         await onRefreshRatings();
       }
 
+      // Close editing states after save (values are already saved)
+      if (editingUserId) {
+        setEditingUserId(null);
+      }
+      
+      // Commit temporary watched date if still editing and close editing state
+      if (isEditingWatchedAt) {
+        setWatchedAt(tempWatchedAt);
+        setIsEditingWatchedAt(false);
+      }
+
       // Clear local state after successful save
       setUserRatings({});
 
       // Update watched status if it changed
+      // Use tempWatchedAt if still editing, otherwise use watchedAt
+      const currentWatchedAt = isEditingWatchedAt ? tempWatchedAt : watchedAt;
+      
       const baselineWatched =
         isTVSeries && selectedSeason
           ? (movie.seasonsWatched?.[selectedSeason]?.watched ?? false)
@@ -482,7 +504,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
           ? (movie.seasonsWatched?.[selectedSeason]?.watchedAt ?? '')
           : (movie.watchedAt ?? '');
 
-      if (watched !== baselineWatched || watchedAt !== baselineWatchedAt) {
+      if (watched !== baselineWatched || currentWatchedAt !== baselineWatchedAt) {
         const groupId = getGroupId();
         if (!groupId) {
           toast({
@@ -495,7 +517,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         }
         // For TV series, send the selected season; for movies, don't send season
         const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
-        await updateMovieWatchedStatus(groupId, movie.imdbId, watched, watchedAt || '', season);
+        await updateMovieWatchedStatus(groupId, movie.imdbId, watched, currentWatchedAt || '', season);
         
         // Refresh movies to get the latest data from backend
         if (onRefreshMovies) {
@@ -504,18 +526,21 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }
 
       // Save movie updates locally
+      // Use tempWatchedAt if still editing, otherwise use watchedAt
+      const finalWatchedAt = isEditingWatchedAt ? tempWatchedAt : watchedAt;
+      
       const updates: Partial<Movie> = {};
       if (isTVSeries && selectedSeason) {
         updates.seasonsWatched = {
           ...(movie.seasonsWatched || {}),
           [selectedSeason]: {
             watched,
-            watchedAt: watchedAt || undefined,
+            watchedAt: finalWatchedAt || undefined,
           },
         };
       } else {
         updates.watched = watched;
-        updates.watchedAt = watchedAt || '';
+        updates.watchedAt = finalWatchedAt || '';
       }
       
       onUpdate(movie.id, updates);
