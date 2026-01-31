@@ -86,7 +86,7 @@ export const Header = () => {
             {/* Logo placeholder - replace with actual logo image in the future */}
             <Film className="w-8 h-8 text-movie-gold" />
             <div>
-              <h1 className="text-2xl font-bold text-movie-gold">BruNans' Watchlist</h1>
+              <h1 className="text-2xl font-bold text-movie-gold">AfterCredits</h1>
             </div>
           </div>
 

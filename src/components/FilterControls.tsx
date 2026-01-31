@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUpDown, Filter, ChevronDown } from 'lucide-react';
+import { ArrowUpDown, Filter, ChevronDown, X } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -22,6 +22,7 @@ interface FilterControlsProps {
   groups: GroupResponse[];
   currentGroupId: string | null;
   onGroupChange: (groupId: string) => void;
+  onClearFilters?: () => void;
 }
 
 const sortOptions = [
@@ -32,6 +33,37 @@ const sortOptions = [
   { value: 'addedAt', label: 'Added Date' },
   { value: 'watchedAt', label: 'Watched Date' },
 ];
+
+const STORAGE_KEY = 'movieFilters';
+
+// Helper functions for localStorage
+const saveFiltersToStorage = (filters: { watchedFilter: string; orderBy?: string; ascending: boolean }) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+  } catch (error) {
+    console.error('Error saving filters to localStorage:', error);
+  }
+};
+
+export const loadFiltersFromStorage = (): { watchedFilter: string; orderBy?: string; ascending: boolean } | null => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading filters from localStorage:', error);
+  }
+  return null;
+};
+
+const clearFiltersFromStorage = () => {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    console.error('Error clearing filters from localStorage:', error);
+  }
+};
 
 export const FilterControls = ({ 
   watchedFilter, 
@@ -44,6 +76,7 @@ export const FilterControls = ({
   groups,
   currentGroupId,
   onGroupChange,
+  onClearFilters,
 }: FilterControlsProps) => {
   const [open, setOpen] = useState(false);
   const [pendingOrderBy, setPendingOrderBy] = useState<string | undefined>(orderBy);
@@ -78,11 +111,33 @@ export const FilterControls = ({
     }
   }, [open, orderBy, ascending]);
 
+  // Save filters to localStorage whenever they change
+  useEffect(() => {
+    saveFiltersToStorage({
+      watchedFilter,
+      orderBy: orderBy || undefined,
+      ascending,
+    });
+  }, [watchedFilter, orderBy, ascending]);
+
   const handleApply = () => {
     onOrderByChange(pendingOrderBy);
     onAscendingChange(pendingAscending);
     setOpen(false);
   };
+
+  const handleClearFilters = () => {
+    onWatchedFilterChange('all');
+    onOrderByChange(undefined);
+    onAscendingChange(true);
+    clearFiltersFromStorage();
+    if (onClearFilters) {
+      onClearFilters();
+    }
+  };
+
+  // Check if filters are at default values
+  const hasNonDefaultFilters = watchedFilter !== 'all' || orderBy !== undefined;
 
   const handleCancel = () => {
     setPendingOrderBy(orderBy);
@@ -100,7 +155,9 @@ export const FilterControls = ({
               <Button
                 variant={watchedFilter === 'all' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => onWatchedFilterChange('all')}
+                onClick={() => {
+                  onWatchedFilterChange('all');
+                }}
                 className={`text-xs sm:text-sm ${watchedFilter === 'all' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
               >
                 All
@@ -124,20 +181,21 @@ export const FilterControls = ({
             </div>
           </div>
           
-          <div className="relative" ref={dropdownRef}>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2 text-xs sm:text-sm"
-              onClick={() => setOpen(!open)}
-            >
-              <Filter className="w-4 h-4" />
-              <span className="hidden sm:inline">More Filters</span>
-              <span className="sm:hidden">Filters</span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
-            </Button>
-            
-            {open && (
+          <div className="flex items-center gap-2">
+            <div className="relative" ref={dropdownRef}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2 text-xs sm:text-sm"
+                onClick={() => setOpen(!open)}
+              >
+                <Filter className="w-4 h-4" />
+                <span className="hidden sm:inline">More Filters</span>
+                <span className="sm:hidden">Filters</span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+              </Button>
+              
+              {open && (
               <div className="absolute left-0 sm:left-auto right-0 sm:right-auto top-full mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-popover border rounded-md shadow-md p-4 z-50">
                 <div className="space-y-4">
                   <div>
@@ -151,14 +209,6 @@ export const FilterControls = ({
                     <div className="space-y-2">
                       <label className="text-xs sm:text-sm font-medium">Sort by</label>
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant={pendingOrderBy === undefined ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setPendingOrderBy(undefined)}
-                          className={`text-xs sm:text-sm ${pendingOrderBy === undefined ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
-                        >
-                          None
-                        </Button>
                         {sortOptions.map((option) => (
                           <Button
                             key={option.value}
@@ -205,15 +255,23 @@ export const FilterControls = ({
                   </div>
                 </div>
               </div>
+              )}
+            </div>
+            {hasNonDefaultFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearFilters}
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100 transition-opacity"
+                title="Clear all filters"
+              >
+                <X className="h-3 w-3 mr-1" />
+                Clear filters
+              </Button>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {orderBy && (
-            <Badge variant="secondary" className="bg-movie-surface border-movie-blue/30 text-xs sm:text-sm">
-              Order: {sortOptions.find((opt) => opt.value === orderBy)?.label || orderBy} ({ascending ? 'Asc' : 'Desc'})
-            </Badge>
-          )}
           <Badge variant="secondary" className="bg-movie-surface border-movie-blue/30 text-xs sm:text-sm w-fit sm:w-auto">
             {movieCount} movies
           </Badge>

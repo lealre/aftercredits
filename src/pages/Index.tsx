@@ -6,7 +6,7 @@ import { useUsers } from '@/hooks/useUsers';
 import { Header } from '@/components/Header';
 import { AddMovieForm } from '@/components/AddMovieForm';
 import { MovieGrid } from '@/components/MovieGrid';
-import { FilterControls } from '@/components/FilterControls';
+import { FilterControls, loadFiltersFromStorage } from '@/components/FilterControls';
 import { Loader2 } from 'lucide-react';
 import { getGroupId, getUserId, saveGroupId } from '@/services/authService';
 import { fetchGroupById, fetchUserById } from '@/services/backendService';
@@ -17,7 +17,12 @@ import { CreateGroupModal } from '@/components/CreateGroupModal';
 
 const Index = () => {
   const navigate = useNavigate();
-  const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
+  
+  // Load filters from localStorage on mount (only once)
+  const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>(() => {
+    const stored = loadFiltersFromStorage();
+    return (stored?.watchedFilter as 'all' | 'watched' | 'unwatched') || 'all';
+  });
   const [groupData, setGroupData] = useState<GroupResponse | null>(null);
   const [allGroups, setAllGroups] = useState<GroupResponse[]>([]);
   const [hasNoGroups, setHasNoGroups] = useState(false);
@@ -44,6 +49,20 @@ const Index = () => {
     ascending,
     setAscending,
   } = useMovies(watchedFilterValue);
+  
+  // Load orderBy and ascending from localStorage on mount (only once)
+  useEffect(() => {
+    const stored = loadFiltersFromStorage();
+    if (stored) {
+      if (stored.orderBy !== undefined) {
+        setOrderBy(stored.orderBy);
+      }
+      if (stored.ascending !== undefined) {
+        setAscending(stored.ascending);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
   const { users, getUserNameById } = useUsers();
   
   const getRatingForUser = useCallback((titleId: string, userId: string) => {
@@ -262,6 +281,8 @@ const Index = () => {
               onPageChange={changePage}
               onPageSizeChange={changePageSize}
               loading={loading}
+              orderBy={orderBy}
+              ascending={ascending}
             />
           </>
         )}
