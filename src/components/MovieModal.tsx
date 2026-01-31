@@ -665,11 +665,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     <SelectValue placeholder="Select a season" />
                   </SelectTrigger>
                   <SelectContent>
-                    {movie.seasons.map((season) => (
-                      <SelectItem key={season.season} value={season.season}>
-                        Season {season.season}
-                      </SelectItem>
-                    ))}
+                    {[...movie.seasons]
+                      .sort((a, b) => parseInt(a.season, 10) - parseInt(b.season, 10))
+                      .map((season) => (
+                        <SelectItem key={season.season} value={season.season}>
+                          Season {season.season}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
                 {selectedSeason && (() => {
