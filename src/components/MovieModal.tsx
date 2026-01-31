@@ -190,7 +190,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     }
   };
 
-  const getUserRating = (userId: string) => {
+  const getUserRating = (userId: string): number | null => {
     // For TV series with a selected season, check for season-specific rating
     if (isTVSeries && selectedSeason) {
       // When editing this user, use temp rating if available
@@ -206,8 +206,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       if (apiRating?.seasonsRatings && apiRating.seasonsRatings[selectedSeason] !== undefined) {
         return apiRating.seasonsRatings[selectedSeason].rating;
       }
-      // If no season rating, return 0 as specified
-      return 0;
+      // If no season rating, return null (no rating exists)
+      return null;
     }
 
     // For movies or when no season is selected, use the regular rating logic
@@ -221,7 +221,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         return userRatings[userId].rating;
       }
       const apiRating = getRatingForUser(userId);
-      return apiRating ? apiRating.rating : 0;
+      return apiRating?.rating ?? null;
     } else {
       // When not editing, check if user has a local rating being edited
       if (userRatings[userId]) {
@@ -229,7 +229,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }
       // Otherwise get from API
       const apiRating = getRatingForUser(userId);
-      return apiRating ? apiRating.rating : 0;
+      return apiRating?.rating ?? null;
     }
   };
 
@@ -831,7 +831,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 min="0"
                                 max="10"
                                 step="0.1"
-                                value={getUserRating(user.id)}
+                                value={getUserRating(user.id) ?? ''}
                                 onChange={(e) => {
                                   const inputValue = e.target.value;
                                   if (inputValue === '' || inputValue === '.') {
@@ -849,11 +849,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                               />
                             ) : (
                               <div className="text-sm text-foreground">
-                                {getUserRating(user.id).toFixed(1)}
+                                {getUserRating(user.id) === null ? '-' : getUserRating(user.id)!.toFixed(1)}
                               </div>
                             )}
                             <StarRating 
-                              rating={getUserRating(user.id)} 
+                              rating={getUserRating(user.id) ?? 0} 
                               readonly={true}
                               size={20}
                             />
@@ -899,17 +899,18 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                               onClick={() => {
                                 // Initialize temp rating with current value
                                 // For TV series, get the season rating; for movies, get the regular rating
-                                let currentRating = 0;
+                                let currentRating: number | null = null;
                                 if (isTVSeries && selectedSeason) {
                                   const apiRating = getRatingForUser(user.id);
-                                  currentRating = apiRating?.seasonsRatings?.[selectedSeason]?.rating ?? 0;
+                                  currentRating = apiRating?.seasonsRatings?.[selectedSeason]?.rating ?? null;
                                 } else {
                                   const apiRating = getRatingForUser(user.id);
-                                  currentRating = apiRating?.rating ?? 0;
+                                  currentRating = apiRating?.rating ?? null;
                                 }
+                                // Use 0 as default when starting to edit (user can change it)
                                 setTempUserRatings(prev => ({
                                   ...prev,
-                                  [user.id]: { rating: currentRating }
+                                  [user.id]: { rating: currentRating ?? 0 }
                                 }));
                                 setEditingUserId(user.id);
                               }}
