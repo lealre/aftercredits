@@ -1,6 +1,6 @@
-import { Movie, User, Rating } from '@/types/movie';
+import { Movie, User, Rating, SeasonRating } from '@/types/movie';
 import { MovieCard } from './MovieCard';
-import { Pagination } from './Pagination';
+import { PaginationSummary, PaginationNavigation } from './Pagination';
 
 interface MovieGridProps {
   movies: Movie[];
@@ -10,7 +10,7 @@ interface MovieGridProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratingsMap: Record<string, Rating[]>;
-  getRatingForUser: (titleId: string, userId: string) => { rating: number } | undefined;
+  getRatingForUser: (titleId: string, userId: string) => { rating: number; seasonsRatings?: Record<string, SeasonRating> } | undefined;
   refreshRatingsForTitle: (titleId: string) => Promise<void>;
   pagination?: {
     page: number;
@@ -21,6 +21,8 @@ interface MovieGridProps {
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (size: number) => void;
   loading?: boolean;
+  orderBy?: string;
+  ascending?: boolean;
 }
 
 export const MovieGrid = ({ 
@@ -36,7 +38,9 @@ export const MovieGrid = ({
   pagination,
   onPageChange,
   onPageSizeChange,
-  loading = false
+  loading = false,
+  orderBy,
+  ascending,
 }: MovieGridProps) => {
   if (movies.length === 0) {
     return (
@@ -54,21 +58,24 @@ export const MovieGrid = ({
   }
 
   return (
-    <div className="space-y-6">
-      {pagination && onPageChange && onPageSizeChange && (
-        <div className="flex justify-center">
-          <Pagination
+    <div className="!mt-3">
+      {/* Pagination Summary - at the top */}
+      {pagination && onPageSizeChange && (
+        <div className="flex justify-center mb-3">
+          <PaginationSummary
             currentPage={pagination.page}
             totalPages={pagination.totalPages}
             totalResults={pagination.totalResults}
             pageSize={pagination.size}
-            onPageChange={onPageChange}
             onPageSizeChange={onPageSizeChange}
             loading={loading}
+            orderBy={orderBy}
+            ascending={ascending}
           />
         </div>
       )}
       
+      {/* Movie Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
         {movies.map((movie) => (
           <MovieCard
@@ -85,6 +92,18 @@ export const MovieGrid = ({
           />
         ))}
       </div>
+      
+      {/* Pagination Navigation - at the bottom */}
+      {pagination && onPageChange && pagination.totalPages > 1 && (
+        <div className="flex justify-center pt-6">
+          <PaginationNavigation
+            currentPage={pagination.page}
+            totalPages={pagination.totalPages}
+            onPageChange={onPageChange}
+            loading={loading}
+          />
+        </div>
+      )}
     </div>
   );
 };

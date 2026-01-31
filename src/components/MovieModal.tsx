@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Movie, User, Rating, Comment } from '@/types/movie';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Movie, User, Rating, Comment, SeasonRating } from '@/types/movie';
 import {
   Dialog,
   DialogContent,
@@ -13,11 +13,18 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Star, Trash2, ExternalLink, X, Edit3, XCircle, MessageCircle, Trash, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment } from '@/services/backendService';
+import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment, deleteCommentSeason } from '@/services/backendService';
 import { getGroupId, getUserId } from '@/services/authService';
 
 interface MovieModalProps {
@@ -31,26 +38,23 @@ interface MovieModalProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratings: Rating[];
-  getRatingForUser: (userId: string) => { rating: number } | undefined;
+  getRatingForUser: (userId: string) => { rating: number; seasonsRatings?: Record<string, SeasonRating> } | undefined;
 }
 
 export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById, ratings, getRatingForUser }: MovieModalProps) => {
   const { toast } = useToast();
   const currentUserId = getUserId();
+  
+  // Check if this is a TV series - must be declared before useEffects that use it
+  const isTVSeries = movie.type === 'tvSeries' || movie.type === 'tvMiniSeries';
+  
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
-  const [comments, setComments] = useState<Comment[]>([]);
+  const [allComments, setAllComments] = useState<Comment[]>([]); // Store all comments from API
   const [loadingComments, setLoadingComments] = useState(false);
   // Initialize watched state directly from movie prop - update only when modal opens with new movie
   const [watched, setWatched] = useState(() => movie.watched || false);
   const [watchedAt, setWatchedAt] = useState(() => movie.watchedAt || '');
-  
-  // Sync watched state only when modal opens with a specific movie
-  useEffect(() => {
-    if (isOpen) {
-      setWatched(movie.watched || false);
-      setWatchedAt(movie.watchedAt || '');
-    }
-  }, [isOpen, movie.id, movie.watched, movie.watchedAt]); // Sync when modal opens or movie changes
+  const [selectedSeason, setSelectedSeason] = useState<string>('');
   const [isEditingWatchedAt, setIsEditingWatchedAt] = useState(false);
   const [tempWatchedAt, setTempWatchedAt] = useState(''); // Temporary date while editing
   const [editingUserId, setEditingUserId] = useState<string | null>(null); // Track which user's rating is being edited
@@ -65,6 +69,38 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [newCommentText, setNewCommentText] = useState<string>('');
   const [addingComment, setAddingComment] = useState(false);
   const [showAddCommentForm, setShowAddCommentForm] = useState(false);
+  
+  // Sync watched state only when modal opens with a specific movie
+  useEffect(() => {
+    if (isOpen) {
+      // Reset season selection when modal opens
+      if (isTVSeries && movie.seasons && movie.seasons.length > 0) {
+        const firstSeason = movie.seasons[0].season;
+        setSelectedSeason(firstSeason);
+
+        const seasonWatched = movie.seasonsWatched?.[firstSeason];
+        setWatched(seasonWatched?.watched ?? false);
+        setWatchedAt(seasonWatched?.watchedAt ?? '');
+      } else {
+        setSelectedSeason('');
+        setWatched(movie.watched || false);
+        setWatchedAt(movie.watchedAt || '');
+      }
+    }
+  }, [isOpen, movie.id, movie.watched, movie.watchedAt, movie.seasonsWatched, isTVSeries, movie.seasons]); // Sync when modal opens or movie changes
+
+  // When user changes season, update watched state to reflect that season (TV series only)
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!isTVSeries) return;
+    if (!selectedSeason) return;
+
+    const seasonWatched = movie.seasonsWatched?.[selectedSeason];
+    setWatched(seasonWatched?.watched ?? false);
+    setWatchedAt(seasonWatched?.watchedAt ?? '');
+    setIsEditingWatchedAt(false);
+    setTempWatchedAt('');
+  }, [isOpen, isTVSeries, selectedSeason, movie.seasonsWatched]);
 
   const loadComments = useCallback(async () => {
     setLoadingComments(true);
@@ -72,24 +108,48 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       const groupId = getGroupId();
       if (!groupId) {
         // No group selected - just set empty comments
-        setComments([]);
+        setAllComments([]);
         setLoadingComments(false);
         return;
       }
       const loadedComments = await fetchComments(groupId, movie.imdbId);
-      setComments(Array.isArray(loadedComments) ? loadedComments : []);
+      // Store all comments without filtering - we'll filter by season in display logic
+      setAllComments(Array.isArray(loadedComments) ? loadedComments : []);
     } catch (error) {
       console.error('Error loading comments:', error);
       // If error, just set empty array
-      setComments([]);
+      setAllComments([]);
     } finally {
       setLoadingComments(false);
     }
   }, [movie.imdbId]);
 
+  // Filter comments based on selected season (for display only)
+  const comments = useMemo(() => {
+    if (isTVSeries && selectedSeason) {
+      // For TV series, show comments that have a comment for this season
+      return allComments
+        .filter(comment => {
+          return comment.seasonsComments && comment.seasonsComments[selectedSeason] !== undefined;
+        })
+        .map(comment => ({
+          ...comment,
+          comment: comment.seasonsComments?.[selectedSeason]?.comment || comment.comment || '',
+        }));
+    } else {
+      // For movies, show regular comments
+      return allComments
+        .filter(comment => comment.comment !== undefined && comment.comment !== null)
+        .map(comment => ({
+          ...comment,
+          comment: comment.comment || '',
+        }));
+    }
+  }, [allComments, isTVSeries, selectedSeason]);
+
   // No longer needed - comments are always created by current user
 
-  // Load comments when modal opens - defer to next tick to not block rendering
+  // Load comments only when modal opens - defer to next tick to not block rendering
   useEffect(() => {
     if (isOpen) {
       // Use setTimeout to defer to next event loop tick, allowing modal to render first
@@ -99,7 +159,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       return () => clearTimeout(timer);
     } else {
       // Reset state when modal closes - revert to original movie data
-      setComments([]);
+      setAllComments([]);
       setUserRatings({});
       setEditingCommentId(null);
       setEditingCommentText('');
@@ -112,7 +172,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setEditingUserId(null);
       setTempUserRatings({});
     }
-  }, [isOpen, loadComments, movie.watched, movie.watchedAt]);
+  }, [isOpen, loadComments]);
 
   const updateUserRating = (userId: string, rating: number) => {
     if (editingUserId === userId) {
@@ -130,7 +190,27 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     }
   };
 
-  const getUserRating = (userId: string) => {
+  const getUserRating = (userId: string): number | null => {
+    // For TV series with a selected season, check for season-specific rating
+    if (isTVSeries && selectedSeason) {
+      // When editing this user, use temp rating if available
+      if (editingUserId === userId && tempUserRatings[userId]) {
+        return tempUserRatings[userId].rating;
+      }
+      // When not editing but has local rating, use that
+      if (userRatings[userId]) {
+        return userRatings[userId].rating;
+      }
+      // Otherwise get from API season ratings
+      const apiRating = getRatingForUser(userId);
+      if (apiRating?.seasonsRatings && apiRating.seasonsRatings[selectedSeason] !== undefined) {
+        return apiRating.seasonsRatings[selectedSeason].rating;
+      }
+      // If no season rating, return null (no rating exists)
+      return null;
+    }
+
+    // For movies or when no season is selected, use the regular rating logic
     if (editingUserId === userId) {
       // When editing this user, use temp rating if available, otherwise fall back to current rating
       if (tempUserRatings[userId]) {
@@ -141,7 +221,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         return userRatings[userId].rating;
       }
       const apiRating = getRatingForUser(userId);
-      return apiRating ? apiRating.rating : 0;
+      return apiRating?.rating ?? null;
     } else {
       // When not editing, check if user has a local rating being edited
       if (userRatings[userId]) {
@@ -149,7 +229,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }
       // Otherwise get from API
       const apiRating = getRatingForUser(userId);
-      return apiRating ? apiRating.rating : 0;
+      return apiRating?.rating ?? null;
     }
   };
 
@@ -176,7 +256,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
   const handleEditComment = (comment: Comment) => {
     setEditingCommentId(comment.id);
-    setEditingCommentText(comment.comment);
+    // For TV series, get the season-specific comment; for movies, use regular comment
+    const commentText = isTVSeries && selectedSeason && comment.seasonsComments
+      ? comment.seasonsComments[selectedSeason]?.comment || ''
+      : comment.comment || '';
+    setEditingCommentText(commentText);
   };
 
   const handleCancelEditComment = () => {
@@ -196,6 +280,16 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       return;
     }
 
+    // For TV series, ensure a season is selected
+    if (isTVSeries && !selectedSeason) {
+      toast({
+        title: "Season required",
+        description: "Please select a season before updating the comment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSavingComment(true);
     try {
       const groupId = getGroupId();
@@ -208,7 +302,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         setSavingComment(false);
         return;
       }
-      await updateComment(groupId, movie.imdbId, commentId, trimmedComment);
+      // For TV series, pass the selected season; for movies, don't pass season
+      const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
+      await updateComment(groupId, movie.imdbId, commentId, trimmedComment, season);
       await loadComments();
       setEditingCommentId(null);
       setEditingCommentText('');
@@ -240,6 +336,16 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       return;
     }
 
+    // For TV series, ensure a season is selected
+    if (isTVSeries && !selectedSeason) {
+      toast({
+        title: "Season required",
+        description: "Please select a season before adding a comment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const groupId = getGroupId();
     if (!groupId) {
       toast({
@@ -252,7 +358,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
     setAddingComment(true);
     try {
-      await createComment(groupId, movie.imdbId, trimmedComment);
+      // For TV series, pass the selected season; for movies, don't pass season
+      const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
+      await createComment(groupId, movie.imdbId, trimmedComment, season);
       await loadComments();
       setNewCommentText('');
       setShowAddCommentForm(false);
@@ -273,7 +381,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   };
 
   const handleDeleteComment = async (commentId: string) => {
-    if (!window.confirm('Are you sure you want to delete this comment?')) {
+    const confirmMessage =
+      isTVSeries
+        ? 'Delete this season comment? (Other seasons will be kept)'
+        : 'Are you sure you want to delete this comment?';
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
@@ -289,7 +401,20 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         setDeletingCommentId(null);
         return;
       }
-      await deleteComment(groupId, movie.imdbId, commentId);
+      if (isTVSeries) {
+        if (!selectedSeason) {
+          toast({
+            title: "Season required",
+            description: "Please select a season before deleting a season comment.",
+            variant: "destructive",
+          });
+          setDeletingCommentId(null);
+          return;
+        }
+        await deleteCommentSeason(groupId, movie.imdbId, commentId, parseInt(selectedSeason, 10));
+      } else {
+        await deleteComment(groupId, movie.imdbId, commentId);
+      }
       await loadComments();
       toast({
         title: "Comment deleted",
@@ -322,13 +447,24 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }
 
       // Save ratings if there are any changes
-      const ratingPromises = Object.entries(userRatings).map(async ([userId, ratingData]) => {
+      // Include both confirmed ratings (userRatings) and temporary ratings (tempUserRatings) if still editing
+      const allRatingsToSave = { ...userRatings };
+      
+      // If a user is currently editing, use their temp rating value
+      if (editingUserId && tempUserRatings[editingUserId]) {
+        allRatingsToSave[editingUserId] = tempUserRatings[editingUserId];
+      }
+      
+      const ratingPromises = Object.entries(allRatingsToSave).map(async ([userId, ratingData]) => {
         if (ratingData.rating >= 0) {
+          // For TV series, pass the selected season; for movies, don't pass season
+          const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
           return saveOrUpdateRating({
             groupId: groupId,
             titleId: movie.imdbId,
             note: ratingData.rating,
             userId: userId,
+            season: season,
           }, ratings);
         }
         return null;
@@ -341,11 +477,34 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         await onRefreshRatings();
       }
 
+      // Close editing states after save (values are already saved)
+      if (editingUserId) {
+        setEditingUserId(null);
+      }
+      
+      // Commit temporary watched date if still editing and close editing state
+      if (isEditingWatchedAt) {
+        setWatchedAt(tempWatchedAt);
+        setIsEditingWatchedAt(false);
+      }
+
       // Clear local state after successful save
       setUserRatings({});
 
       // Update watched status if it changed
-      if (watched !== movie.watched || watchedAt !== movie.watchedAt) {
+      // Use tempWatchedAt if still editing, otherwise use watchedAt
+      const currentWatchedAt = isEditingWatchedAt ? tempWatchedAt : watchedAt;
+      
+      const baselineWatched =
+        isTVSeries && selectedSeason
+          ? (movie.seasonsWatched?.[selectedSeason]?.watched ?? false)
+          : (movie.watched ?? false);
+      const baselineWatchedAt =
+        isTVSeries && selectedSeason
+          ? (movie.seasonsWatched?.[selectedSeason]?.watchedAt ?? '')
+          : (movie.watchedAt ?? '');
+
+      if (watched !== baselineWatched || currentWatchedAt !== baselineWatchedAt) {
         const groupId = getGroupId();
         if (!groupId) {
           toast({
@@ -356,7 +515,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
           setSaving(false);
           return;
         }
-        await updateMovieWatchedStatus(groupId, movie.imdbId, watched, watchedAt || '');
+        // For TV series, send the selected season; for movies, don't send season
+        const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
+        await updateMovieWatchedStatus(groupId, movie.imdbId, watched, currentWatchedAt || '', season);
         
         // Refresh movies to get the latest data from backend
         if (onRefreshMovies) {
@@ -365,10 +526,22 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }
 
       // Save movie updates locally
-      const updates: Partial<Movie> = {
-        watched,
-        watchedAt: watchedAt || ''
-      };
+      // Use tempWatchedAt if still editing, otherwise use watchedAt
+      const finalWatchedAt = isEditingWatchedAt ? tempWatchedAt : watchedAt;
+      
+      const updates: Partial<Movie> = {};
+      if (isTVSeries && selectedSeason) {
+        updates.seasonsWatched = {
+          ...(movie.seasonsWatched || {}),
+          [selectedSeason]: {
+            watched,
+            watchedAt: finalWatchedAt || undefined,
+          },
+        };
+      } else {
+        updates.watched = watched;
+        updates.watchedAt = finalWatchedAt || '';
+      }
       
       onUpdate(movie.id, updates);
       
@@ -445,7 +618,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col bg-movie-surface border-border p-0">
+      <DialogContent className="w-full max-w-3xl max-h-[90vh] flex flex-col bg-movie-surface border-border p-0">
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
           <DialogTitle className="text-movie-blue">{movie.title}</DialogTitle>
         </DialogHeader>
@@ -453,19 +626,32 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         <div className="flex-1 flex flex-col min-h-0">
           {/* On mobile: single scroll container, on desktop: grid with separate scrolls */}
           <div className="flex-1 overflow-y-auto px-3 pb-3 md:overflow-hidden md:flex md:flex-col">
-            <div className="flex flex-col md:grid md:grid-cols-2 gap-3 w-full md:flex-1 md:min-h-0">
+            <div className="flex flex-col md:grid md:[grid-template-columns:minmax(0,260px)_minmax(0,1fr)] gap-3 w-full md:flex-1 md:min-h-0">
               {/* Movie Info */}
               <div className="md:overflow-y-auto md:h-full space-y-4 md:px-3 md:pb-3">
                 {/* Hide poster on mobile */}
                 <div className="hidden md:block aspect-[2/3] relative overflow-hidden rounded-lg">
-                  <img
-                    src={movie.poster}
-                    alt={movie.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.src = '/placeholder-movie.jpg';
-                    }}
-                  />
+                  {(() => {
+                    // For TV series, try to get the first episode image of the selected season
+                    let imageSrc = movie.poster;
+                    if (isTVSeries && selectedSeason && movie.episodes) {
+                      const seasonEpisodes = movie.episodes.filter(ep => ep.season === selectedSeason);
+                      const firstEpisode = seasonEpisodes.find(ep => ep.episodeNumber === 1) || seasonEpisodes[0];
+                      if (firstEpisode?.primaryImage?.url) {
+                        imageSrc = firstEpisode.primaryImage.url;
+                      }
+                    }
+                    return (
+                      <img
+                        src={imageSrc}
+                        alt={movie.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = '/placeholder-movie.jpg';
+                        }}
+                      />
+                    );
+                  })()}
                 </div>
                 
                 <div className="space-y-2">
@@ -496,6 +682,56 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               {/* Movie Status - on mobile scrolls with everything, on desktop scrolls separately */}
               <div className="flex flex-col min-h-0 md:h-full md:flex md:flex-col">
                 <div className="flex-1 overflow-y-auto md:overflow-y-auto space-y-6 md:px-3 md:pb-3 md:min-h-0">
+            {/* Season Selection for TV Series */}
+            {isTVSeries && movie.seasons && movie.seasons.length > 0 && (
+              <div className="space-y-2">
+                <Select value={selectedSeason} onValueChange={setSelectedSeason}>
+                  <SelectTrigger className="w-full bg-movie-surface border-border focus:border-ring focus-visible:border-ring focus:ring-0 focus-visible:ring-0">
+                    <SelectValue placeholder="Select a season" />
+                  </SelectTrigger>
+                  <SelectContent 
+                    position="popper" 
+                    side="bottom" 
+                    sideOffset={4}
+                    className="max-h-[200px] overflow-y-auto"
+                  >
+                    {[...movie.seasons]
+                      .sort((a, b) => parseInt(a.season, 10) - parseInt(b.season, 10))
+                      .map((season) => (
+                        <SelectItem key={season.season} value={season.season}>
+                          Season {season.season}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {selectedSeason && (() => {
+                  const selectedSeasonData = movie.seasons?.find(s => s.season === selectedSeason);
+                  // Find the first episode of the selected season (episodeNumber === 1 or first in array)
+                  const seasonEpisodes = movie.episodes?.filter(ep => ep.season === selectedSeason) || [];
+                  const firstEpisode = seasonEpisodes.find(ep => ep.episodeNumber === 1) || seasonEpisodes[0];
+                  const releaseDate = firstEpisode?.releaseDate 
+                    ? new Date(firstEpisode.releaseDate.year, firstEpisode.releaseDate.month - 1, firstEpisode.releaseDate.day)
+                    : null;
+                  
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const isFuture = releaseDate && releaseDate > today;
+                  
+                  const dateText = releaseDate 
+                    ? `${releaseDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+                    : '';
+                  
+                  return (
+                    selectedSeasonData && (
+                      <div className="text-sm text-muted-foreground">
+                        {selectedSeasonData.episodeCount} episodes{dateText && ` • ${isFuture ? 'Releases at' : 'Released'} ${dateText}`}
+                      </div>
+                    )
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Watched Status */}
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
@@ -600,9 +836,14 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 min="0"
                                 max="10"
                                 step="0.1"
-                                value={getUserRating(user.id)}
+                                value={getUserRating(user.id) ?? ''}
                                 onChange={(e) => {
-                                  const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                  const inputValue = e.target.value;
+                                  if (inputValue === '' || inputValue === '.') {
+                                    updateUserRating(user.id, 0);
+                                    return;
+                                  }
+                                  const value = parseFloat(inputValue);
                                   if (!isNaN(value)) {
                                     updateUserRating(user.id, Math.min(10, Math.max(0, value)));
                                   }
@@ -613,11 +854,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                               />
                             ) : (
                               <div className="text-sm text-foreground">
-                                {getUserRating(user.id).toFixed(1)}
+                                {getUserRating(user.id) === null ? '-' : getUserRating(user.id)!.toFixed(1)}
                               </div>
                             )}
                             <StarRating 
-                              rating={getUserRating(user.id)} 
+                              rating={getUserRating(user.id) ?? 0} 
                               readonly={true}
                               size={20}
                             />
@@ -662,10 +903,19 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                               size="sm"
                               onClick={() => {
                                 // Initialize temp rating with current value
-                                const currentRating = getUserRating(user.id);
+                                // For TV series, get the season rating; for movies, get the regular rating
+                                let currentRating: number | null = null;
+                                if (isTVSeries && selectedSeason) {
+                                  const apiRating = getRatingForUser(user.id);
+                                  currentRating = apiRating?.seasonsRatings?.[selectedSeason]?.rating ?? null;
+                                } else {
+                                  const apiRating = getRatingForUser(user.id);
+                                  currentRating = apiRating?.rating ?? null;
+                                }
+                                // Use 0 as default when starting to edit (user can change it)
                                 setTempUserRatings(prev => ({
                                   ...prev,
-                                  [user.id]: { rating: currentRating }
+                                  [user.id]: { rating: currentRating ?? 0 }
                                 }));
                                 setEditingUserId(user.id);
                               }}

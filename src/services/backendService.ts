@@ -20,6 +20,47 @@ import {
 
 const API_BASE_URL = "/api";
 
+interface BackendSeason {
+  season: string;
+  episodeCount: number;
+}
+
+interface BackendReleaseDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+interface BackendEpisodeRating {
+  aggregateRating: number;
+  voteCount: number;
+}
+
+interface BackendEpisodeImage {
+  url: string;
+  width: number;
+  height: number;
+}
+
+interface BackendEpisode {
+  id: string;
+  title: string;
+  season: string;
+  episodeNumber: number;
+  primaryImage?: BackendEpisodeImage;
+  runtimeSeconds?: number;
+  plot?: string;
+  rating?: BackendEpisodeRating;
+  releaseDate?: BackendReleaseDate;
+}
+
+interface BackendSeasonWatched {
+  watched: boolean;
+  watchedAt?: string;
+  addedAt: string;
+  updatedAt: string;
+}
+
 interface BackendMovie {
   id: string;
   primaryTitle: string;
@@ -41,6 +82,9 @@ interface BackendMovie {
   writersNames: string[];
   starsNames: string[];
   originCountries: string[];
+  seasons?: BackendSeason[];
+  episodes?: BackendEpisode[];
+  seasonsWatched?: Record<string, BackendSeasonWatched>;
   groupRatings: Rating[] | null;
   watched: boolean;
   watchedAt?: string;
@@ -114,6 +158,30 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
     addedDate: new Date().toISOString().split("T")[0],
     watched: backendMovie.watched,
     watchedAt: backendMovie.watchedAt,
+    seasons: backendMovie.seasons,
+    seasonsWatched: backendMovie.seasonsWatched,
+    episodes: backendMovie.episodes?.map(ep => ({
+      id: ep.id,
+      title: ep.title,
+      season: ep.season,
+      episodeNumber: ep.episodeNumber,
+      primaryImage: ep.primaryImage ? {
+        url: ep.primaryImage.url,
+        width: ep.primaryImage.width,
+        height: ep.primaryImage.height,
+      } : undefined,
+      runtimeSeconds: ep.runtimeSeconds,
+      plot: ep.plot,
+      rating: ep.rating ? {
+        aggregateRating: ep.rating.aggregateRating,
+        voteCount: ep.rating.voteCount,
+      } : undefined,
+      releaseDate: ep.releaseDate ? {
+        year: ep.releaseDate.year,
+        month: ep.releaseDate.month,
+        day: ep.releaseDate.day,
+      } : undefined,
+    })),
   };
 };
 
@@ -233,15 +301,21 @@ export const updateRating = async (
   ratingId: string,
   ratingData: {
     note: number;
+    season?: number;
   }
 ): Promise<Rating> => {
   try {
+    const body: { note: number; season?: number } = { note: ratingData.note };
+    if (ratingData.season !== undefined) {
+      body.season = ratingData.season;
+    }
+    
     const response = await authFetch(`${API_BASE_URL}/ratings/${ratingId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(ratingData),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -265,6 +339,7 @@ export const saveOrUpdateRating = async (
     titleId: string;
     note: number;
     userId: string;
+    season?: number;
   },
   existingRatings: Rating[]
 ): Promise<Rating> => {
@@ -277,10 +352,29 @@ export const saveOrUpdateRating = async (
   );
 
   if (existingRating) {
-    // Update existing rating
-    return updateRating(existingRating.id, {
-      note: ratingData.note,
-    });
+    // For TV series with season, check if the season already exists in seasonsRatings
+    if (ratingData.season !== undefined) {
+      const seasonKey = String(ratingData.season);
+      const seasonExists = existingRating.seasonsRatings && 
+                         existingRating.seasonsRatings[seasonKey] !== undefined;
+      
+      if (seasonExists) {
+        // Season exists, update it
+        return updateRating(existingRating.id, {
+          note: ratingData.note,
+          season: ratingData.season,
+        });
+      } else {
+        // Rating exists but season doesn't, add new season (use POST)
+        return saveRating(ratingData);
+      }
+    } else {
+      // For movies (no season), update existing rating
+      return updateRating(existingRating.id, {
+        note: ratingData.note,
+        season: ratingData.season,
+      });
+    }
   } else {
     // Create new rating
     return saveRating(ratingData);
@@ -291,18 +385,24 @@ export const saveRating = async (ratingData: {
   groupId: string;
   titleId: string;
   note: number;
+  season?: number;
 }): Promise<Rating> => {
   try {
+    const body: { groupId: string; titleId: string; note: number; season?: number } = {
+      groupId: ratingData.groupId,
+      titleId: ratingData.titleId,
+      note: ratingData.note,
+    };
+    if (ratingData.season !== undefined) {
+      body.season = ratingData.season;
+    }
+    
     const response = await authFetch(`${API_BASE_URL}/ratings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        groupId: ratingData.groupId,
-        titleId: ratingData.titleId,
-        note: ratingData.note,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -324,10 +424,11 @@ export const updateMovieWatchedStatus = async (
   groupId: string,
   titleId: string,
   watched: boolean,
-  watchedAt: string
+  watchedAt: string,
+  season?: number
 ): Promise<void> => {
   try {
-    const body: { titleId: string; watched: boolean; watchedAt: string } = { 
+    const body: { titleId: string; watched: boolean; watchedAt: string; season?: number } = { 
       titleId, 
       watched, 
       watchedAt 
@@ -335,6 +436,9 @@ export const updateMovieWatchedStatus = async (
     if (!watched) {
       console.log('Setting watchedAt to empty string for title ID', titleId);
       body.watchedAt = '';
+    }
+    if (season !== undefined) {
+      body.season = season;
     }
 
     const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles`, {
@@ -398,19 +502,25 @@ export const fetchComments = async (groupId: string, titleId: string): Promise<C
 export const createComment = async (
   groupId: string,
   titleId: string,
-  comment: string
+  comment: string,
+  season?: number
 ): Promise<Comment> => {
   try {
+    const body: { groupId: string; titleId: string; comment: string; season?: number } = {
+      groupId,
+      titleId,
+      comment,
+    };
+    if (season !== undefined) {
+      body.season = season;
+    }
+    
     const response = await authFetch(`${API_BASE_URL}/comments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        groupId,
-        titleId,
-        comment,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -432,15 +542,21 @@ export const updateComment = async (
   groupId: string,
   titleId: string,
   commentId: string,
-  comment: string
+  comment: string,
+  season?: number
 ): Promise<Comment> => {
   try {
+    const body: { comment: string; season?: number } = { comment };
+    if (season !== undefined) {
+      body.season = season;
+    }
+    
     const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/titles/${titleId}/comments/${commentId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ comment }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -472,6 +588,31 @@ export const deleteComment = async (groupId: string, titleId: string, commentId:
     }
   } catch (error) {
     console.error("Error deleting comment:", error);
+    throw error;
+  }
+};
+
+// Delete a single season's comment for a TV series (keeps other seasons' comments intact)
+export const deleteCommentSeason = async (
+  groupId: string,
+  titleId: string,
+  commentId: string,
+  season: number
+): Promise<void> => {
+  try {
+    const response = await authFetch(
+      `${API_BASE_URL}/groups/${groupId}/titles/${titleId}/comments/${commentId}/seasons/${season}`,
+      { method: "DELETE" }
+    );
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to delete season comment";
+      console.log("Error deleting season comment:", errorData);
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.error("Error deleting season comment:", error);
     throw error;
   }
 };

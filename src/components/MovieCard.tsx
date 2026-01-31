@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Movie, User, Rating } from "@/types/movie";
+import { Movie, User, Rating, SeasonRating } from "@/types/movie";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Star, MessageCircle, Eye, EyeOff } from "lucide-react";
@@ -15,7 +15,7 @@ interface MovieCardProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratings: Rating[];
-  getRatingForUser: (userId: string) => { rating: number } | undefined;
+  getRatingForUser: (userId: string) => { rating: number; seasonsRatings?: Record<string, SeasonRating> } | undefined;
   onRefreshRatings?: () => void;
 }
 
@@ -31,6 +31,35 @@ export const MovieCard = ({
   onRefreshRatings,
 }: MovieCardProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const isTVSeries = movie.type === "tvSeries" || movie.type === "tvMiniSeries";
+
+  const getTvSeriesWatchedDisplay = () => {
+    const seasonsWatched = movie.seasonsWatched;
+    if (!seasonsWatched) return { watched: false, watchedAt: undefined as string | undefined };
+
+    const watchedSeasons = Object.entries(seasonsWatched).filter(([, v]) => v?.watched);
+    if (watchedSeasons.length === 0) return { watched: false, watchedAt: undefined as string | undefined };
+
+    const withDates = watchedSeasons
+      .map(([season, v]) => ({ season, watchedAt: v?.watchedAt }))
+      .filter((x) => !!x.watchedAt && !Number.isNaN(new Date(x.watchedAt as string).getTime()));
+
+    if (withDates.length > 0) {
+      withDates.sort(
+        (a, b) =>
+          new Date(b.watchedAt as string).getTime() - new Date(a.watchedAt as string).getTime(),
+      );
+      return { watched: true, watchedAt: withDates[0].watchedAt as string };
+    }
+
+    // Watched season(s) exist but none have a watchedAt; still show as watched, but no date.
+    return { watched: true, watchedAt: undefined as string | undefined };
+  };
+
+  const watchedDisplay = isTVSeries
+    ? getTvSeriesWatchedDisplay()
+    : { watched: !!movie.watched, watchedAt: movie.watchedAt };
 
   const formatDuration = (runtimeSeconds?: number): string => {
     if (!runtimeSeconds) return "";
@@ -61,7 +90,7 @@ export const MovieCard = ({
         className="group relative overflow-hidden bg-gradient-card border-border/50 hover:border-movie-blue/30 transition-all duration-300 hover:shadow-glow cursor-pointer transform hover:scale-[1.02]"
         onClick={() => setIsModalOpen(true)}
       >
-        <div className="aspect-[16/9] sm:aspect-[2/3] relative overflow-hidden">
+        <div className="aspect-[3/4] sm:aspect-[2/3] relative overflow-hidden">
           <img
             src={movie.poster}
             alt={movie.title}
@@ -85,7 +114,7 @@ export const MovieCard = ({
 
           {/* Watched Status */}
           <div className="absolute top-3 right-3">
-            {movie.watched ? (
+            {watchedDisplay.watched ? (
               <Eye className="w-4 h-4 text-movie-rating" />
             ) : (
               <EyeOff className="w-4 h-4 text-muted-foreground" />
@@ -102,9 +131,9 @@ export const MovieCard = ({
           </p>
 
           {/* Watched Date */}
-          {movie.watched && movie.watchedAt && (
+          {watchedDisplay.watched && watchedDisplay.watchedAt && (
             <p className="text-xs text-movie-rating mb-2">
-              Watched on {formatDate(movie.watchedAt)}
+              Watched on {formatDate(watchedDisplay.watchedAt)}
             </p>
           )}
 

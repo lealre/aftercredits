@@ -1,3 +1,45 @@
+export interface Season {
+  season: string;
+  episodeCount: number;
+}
+
+export interface ReleaseDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+export interface EpisodeRating {
+  aggregateRating: number;
+  voteCount: number;
+}
+
+export interface EpisodeImage {
+  url: string;
+  width: number;
+  height: number;
+}
+
+export interface Episode {
+  id: string;
+  title: string;
+  season: string;
+  episodeNumber: number;
+  primaryImage?: EpisodeImage;
+  runtimeSeconds?: number;
+  plot?: string;
+  rating?: EpisodeRating;
+  releaseDate?: ReleaseDate;
+}
+
+export interface SeasonWatched {
+  watched: boolean;
+  watchedAt?: string;
+  // backend may include these; keep optional so movies/older payloads still work
+  addedAt?: string;
+  updatedAt?: string;
+}
+
 export interface Movie {
   id: string;
   imdbId: string;
@@ -14,6 +56,15 @@ export interface Movie {
   watched?: boolean;
   watchedAt?: string;
   addedDate: string;
+  seasons?: Season[];
+  episodes?: Episode[];
+  seasonsWatched?: Record<string, SeasonWatched>; // season number -> watched info
+}
+
+export interface SeasonRating {
+  rating: number;
+  addedAt: string;
+  updatedAt: string;
 }
 
 export interface Rating {
@@ -21,6 +72,7 @@ export interface Rating {
   titleId: string;
   userId: string;
   note: number;
+  seasonsRatings?: Record<string, SeasonRating>; // season number -> SeasonRating
   // comments field removed - now in separate endpoint
 }
 
@@ -28,11 +80,18 @@ export interface RatingsResponse {
   ratings: Rating[];
 }
 
+export interface SeasonComment {
+  comment: string;
+  addedAt: string;
+  updatedAt: string;
+}
+
 export interface Comment {
   id: string;
   titleId: string;
   userId: string;
-  comment: string;
+  comment?: string;
+  seasonsComments?: Record<string, SeasonComment>; // season number -> SeasonComment
   createdAt: string;
   updatedAt: string;
 }
