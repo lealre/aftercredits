@@ -689,7 +689,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                   <SelectTrigger className="w-full bg-movie-surface border-border focus:border-ring focus-visible:border-ring focus:ring-0 focus-visible:ring-0">
                     <SelectValue placeholder="Select a season" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent 
+                    position="popper" 
+                    side="bottom" 
+                    sideOffset={4}
+                    className="max-h-[200px] overflow-y-auto"
+                  >
                     {[...movie.seasons]
                       .sort((a, b) => parseInt(a.season, 10) - parseInt(b.season, 10))
                       .map((season) => (
