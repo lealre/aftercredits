@@ -1,4 +1,4 @@
-import { Movie, User, Rating } from '@/types/movie';
+import { Movie, User, Rating, SeasonRating } from '@/types/movie';
 import { MovieCard } from './MovieCard';
 import { Pagination } from './Pagination';
 
@@ -10,7 +10,7 @@ interface MovieGridProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratingsMap: Record<string, Rating[]>;
-  getRatingForUser: (titleId: string, userId: string) => { rating: number } | undefined;
+  getRatingForUser: (titleId: string, userId: string) => { rating: number; seasonsRatings?: Record<string, SeasonRating> } | undefined;
   refreshRatingsForTitle: (titleId: string) => Promise<void>;
   pagination?: {
     page: number;

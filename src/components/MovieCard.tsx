@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Movie, User, Rating } from "@/types/movie";
+import { Movie, User, Rating, SeasonRating } from "@/types/movie";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Star, MessageCircle, Eye, EyeOff } from "lucide-react";
@@ -15,7 +15,7 @@ interface MovieCardProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratings: Rating[];
-  getRatingForUser: (userId: string) => { rating: number } | undefined;
+  getRatingForUser: (userId: string) => { rating: number; seasonsRatings?: Record<string, SeasonRating> } | undefined;
   onRefreshRatings?: () => void;
 }
 

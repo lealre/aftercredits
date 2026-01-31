@@ -352,11 +352,29 @@ export const saveOrUpdateRating = async (
   );
 
   if (existingRating) {
-    // Update existing rating
-    return updateRating(existingRating.id, {
-      note: ratingData.note,
-      season: ratingData.season,
-    });
+    // For TV series with season, check if the season already exists in seasonsRatings
+    if (ratingData.season !== undefined) {
+      const seasonKey = String(ratingData.season);
+      const seasonExists = existingRating.seasonsRatings && 
+                         existingRating.seasonsRatings[seasonKey] !== undefined;
+      
+      if (seasonExists) {
+        // Season exists, update it
+        return updateRating(existingRating.id, {
+          note: ratingData.note,
+          season: ratingData.season,
+        });
+      } else {
+        // Rating exists but season doesn't, add new season (use POST)
+        return saveRating(ratingData);
+      }
+    } else {
+      // For movies (no season), update existing rating
+      return updateRating(existingRating.id, {
+        note: ratingData.note,
+        season: ratingData.season,
+      });
+    }
   } else {
     // Create new rating
     return saveRating(ratingData);

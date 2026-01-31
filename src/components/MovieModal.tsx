@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Movie, User, Rating, Comment } from '@/types/movie';
+import { Movie, User, Rating, Comment, SeasonRating } from '@/types/movie';
 import {
   Dialog,
   DialogContent,
@@ -38,7 +38,7 @@ interface MovieModalProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratings: Rating[];
-  getRatingForUser: (userId: string) => { rating: number; seasonsRatings?: Record<string, number> } | undefined;
+  getRatingForUser: (userId: string) => { rating: number; seasonsRatings?: Record<string, SeasonRating> } | undefined;
 }
 
 export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById, ratings, getRatingForUser }: MovieModalProps) => {
@@ -134,7 +134,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         })
         .map(comment => ({
           ...comment,
-          comment: comment.seasonsComments?.[selectedSeason] || comment.comment || '',
+          comment: comment.seasonsComments?.[selectedSeason]?.comment || comment.comment || '',
         }));
     } else {
       // For movies, show regular comments
@@ -204,7 +204,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       // Otherwise get from API season ratings
       const apiRating = getRatingForUser(userId);
       if (apiRating?.seasonsRatings && apiRating.seasonsRatings[selectedSeason] !== undefined) {
-        return apiRating.seasonsRatings[selectedSeason];
+        return apiRating.seasonsRatings[selectedSeason].rating;
       }
       // If no season rating, return 0 as specified
       return 0;
@@ -258,7 +258,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     setEditingCommentId(comment.id);
     // For TV series, get the season-specific comment; for movies, use regular comment
     const commentText = isTVSeries && selectedSeason && comment.seasonsComments
-      ? comment.seasonsComments[selectedSeason] || ''
+      ? comment.seasonsComments[selectedSeason]?.comment || ''
       : comment.comment || '';
     setEditingCommentText(commentText);
   };
@@ -875,7 +875,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 let currentRating = 0;
                                 if (isTVSeries && selectedSeason) {
                                   const apiRating = getRatingForUser(user.id);
-                                  currentRating = apiRating?.seasonsRatings?.[selectedSeason] ?? 0;
+                                  currentRating = apiRating?.seasonsRatings?.[selectedSeason]?.rating ?? 0;
                                 } else {
                                   const apiRating = getRatingForUser(user.id);
                                   currentRating = apiRating?.rating ?? 0;

@@ -61,12 +61,18 @@ export interface Movie {
   seasonsWatched?: Record<string, SeasonWatched>; // season number -> watched info
 }
 
+export interface SeasonRating {
+  rating: number;
+  addedAt: string;
+  updatedAt: string;
+}
+
 export interface Rating {
   id: string;
   titleId: string;
   userId: string;
   note: number;
-  seasonsRatings?: Record<string, number>; // season number -> rating
+  seasonsRatings?: Record<string, SeasonRating>; // season number -> SeasonRating
   // comments field removed - now in separate endpoint
 }
 
@@ -74,12 +80,18 @@ export interface RatingsResponse {
   ratings: Rating[];
 }
 
+export interface SeasonComment {
+  comment: string;
+  addedAt: string;
+  updatedAt: string;
+}
+
 export interface Comment {
   id: string;
   titleId: string;
   userId: string;
   comment?: string;
-  seasonsComments?: Record<string, string>; // season number -> comment text
+  seasonsComments?: Record<string, SeasonComment>; // season number -> SeasonComment
   createdAt: string;
   updatedAt: string;
 }
