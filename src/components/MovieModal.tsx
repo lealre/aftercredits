@@ -6,6 +6,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,7 +34,7 @@ import { Star, Trash2, ExternalLink, X, Edit3, XCircle, MessageCircle, Trash, Ch
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment, deleteCommentSeason } from '@/services/backendService';
+import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment, deleteCommentSeason, deleteRating, deleteRatingSeason as deleteRatingSeasonService } from '@/services/backendService';
 import { getGroupId, getUserId } from '@/services/authService';
 
 interface MovieModalProps {
@@ -59,6 +69,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [tempWatchedAt, setTempWatchedAt] = useState(''); // Temporary date while editing
   const [editingUserId, setEditingUserId] = useState<string | null>(null); // Track which user's rating is being edited
   const [tempUserRatings, setTempUserRatings] = useState<Record<string, { rating: number }>>({}); // Temporary ratings while editing
+  const [deletingRatingId, setDeletingRatingId] = useState<string | null>(null); // Track which rating is being deleted
+  const [showDeleteRatingModal, setShowDeleteRatingModal] = useState(false);
+  const [ratingToDelete, setRatingToDelete] = useState<string | null>(null); // userId to delete
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -70,24 +83,40 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [addingComment, setAddingComment] = useState(false);
   const [showAddCommentForm, setShowAddCommentForm] = useState(false);
   
+  // Track the movie ID to detect when it changes
+  const [lastMovieId, setLastMovieId] = useState<string | null>(null);
+  
   // Sync watched state only when modal opens with a specific movie
   useEffect(() => {
     if (isOpen) {
-      // Reset season selection when modal opens
+      const isNewMovie = lastMovieId !== movie.id;
+      
       if (isTVSeries && movie.seasons && movie.seasons.length > 0) {
-        const firstSeason = movie.seasons[0].season;
-        setSelectedSeason(firstSeason);
-
-        const seasonWatched = movie.seasonsWatched?.[firstSeason];
+        // Only reset season selection when opening modal for a new movie
+        if (isNewMovie) {
+          const firstSeason = movie.seasons[0].season;
+          setSelectedSeason(firstSeason);
+          setLastMovieId(movie.id);
+        }
+        
+        // Update watched state for the current season (always update, even if season didn't change)
+        const seasonToUse = selectedSeason || movie.seasons[0].season;
+        const seasonWatched = movie.seasonsWatched?.[seasonToUse];
         setWatched(seasonWatched?.watched ?? false);
         setWatchedAt(seasonWatched?.watchedAt ?? '');
       } else {
-        setSelectedSeason('');
+        if (isNewMovie) {
+          setSelectedSeason('');
+          setLastMovieId(movie.id);
+        }
         setWatched(movie.watched || false);
         setWatchedAt(movie.watchedAt || '');
       }
+    } else {
+      // Reset when modal closes
+      setLastMovieId(null);
     }
-  }, [isOpen, movie.id, movie.watched, movie.watchedAt, movie.seasonsWatched, isTVSeries, movie.seasons]); // Sync when modal opens or movie changes
+  }, [isOpen, movie.id, movie.watched, movie.watchedAt, movie.seasonsWatched, isTVSeries, movie.seasons, selectedSeason, lastMovieId]); // Sync when modal opens or movie changes
 
   // When user changes season, update watched state to reflect that season (TV series only)
   useEffect(() => {
@@ -103,6 +132,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     // Reset rating editing state when season changes
     setEditingUserId(null);
     setTempUserRatings({});
+    // Reset comment editing state when season changes
+    setNewCommentText('');
+    setShowAddCommentForm(false);
+    setEditingCommentId(null);
+    setEditingCommentText('');
   }, [isOpen, isTVSeries, selectedSeason, movie.seasonsWatched]);
 
   const loadComments = useCallback(async () => {
@@ -433,6 +467,102 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     } finally {
       setDeletingCommentId(null);
     }
+  };
+
+  const handleDeleteRatingClick = (userId: string) => {
+    setRatingToDelete(userId);
+    setShowDeleteRatingModal(true);
+  };
+
+  const handleDeleteRatingConfirm = async () => {
+    if (!ratingToDelete) return;
+    
+    const userId = ratingToDelete;
+    setShowDeleteRatingModal(false);
+    setDeletingRatingId(userId);
+    
+    // Store the current selected season to preserve it after refresh
+    const currentSeason = selectedSeason;
+    
+    try {
+      // Find the full rating object from the ratings array (which includes the id)
+      const fullRating = ratings.find(r => r.userId === userId && r.titleId === movie.imdbId);
+      if (!fullRating) {
+        toast({
+          title: "Error",
+          description: "Rating not found.",
+          variant: "destructive",
+        });
+        setDeletingRatingId(null);
+        setRatingToDelete(null);
+        return;
+      }
+
+      if (isTVSeries && currentSeason) {
+        // For TV series, delete the season-specific rating
+        const seasonKey = currentSeason;
+        const seasonRating = fullRating.seasonsRatings?.[seasonKey];
+        if (!seasonRating) {
+          toast({
+            title: "Error",
+            description: "Season rating not found.",
+            variant: "destructive",
+          });
+          setDeletingRatingId(null);
+          setRatingToDelete(null);
+          return;
+        }
+        await deleteRatingSeasonService(fullRating.id, parseInt(currentSeason, 10));
+      } else {
+        // For movies, delete the entire rating
+        await deleteRating(fullRating.id);
+      }
+
+      // Refresh ratings
+      if (onRefreshRatings) {
+        onRefreshRatings();
+      }
+
+      // Clear local state
+      const updatedUserRatings = { ...userRatings };
+      delete updatedUserRatings[userId];
+      setUserRatings(updatedUserRatings);
+
+      const updatedTempRatings = { ...tempUserRatings };
+      delete updatedTempRatings[userId];
+      setTempUserRatings(updatedTempRatings);
+
+      if (editingUserId === userId) {
+        setEditingUserId(null);
+      }
+
+      // Restore the selected season after refresh (for TV series)
+      if (isTVSeries && currentSeason) {
+        // The season will be preserved because we're not resetting selectedSeason
+        // But we need to make sure the useEffect doesn't reset it
+        // The useEffect only runs when selectedSeason changes, so we're good
+      }
+
+      toast({
+        title: "Rating deleted",
+        description: "The rating has been removed.",
+      });
+    } catch (error) {
+      console.error('Error deleting rating:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete rating. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingRatingId(null);
+      setRatingToDelete(null);
+    }
+  };
+
+  const handleDeleteRatingCancel = () => {
+    setShowDeleteRatingModal(false);
+    setRatingToDelete(null);
   };
 
   const handleSave = async () => {
@@ -901,31 +1031,58 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                               </Button>
                             </div>
                           ) : canEditRating ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                // Initialize temp rating with current value
-                                // For TV series, get the season rating; for movies, get the regular rating
-                                let currentRating: number | null = null;
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  // Initialize temp rating with current value
+                                  // For TV series, get the season rating; for movies, get the regular rating
+                                  let currentRating: number | null = null;
+                                  if (isTVSeries && selectedSeason) {
+                                    const apiRating = getRatingForUser(user.id);
+                                    currentRating = apiRating?.seasonsRatings?.[selectedSeason]?.rating ?? null;
+                                  } else {
+                                    const apiRating = getRatingForUser(user.id);
+                                    currentRating = apiRating?.rating ?? null;
+                                  }
+                                  // Use 0 as default when starting to edit (user can change it)
+                                  setTempUserRatings(prev => ({
+                                    ...prev,
+                                    [user.id]: { rating: currentRating ?? 0 }
+                                  }));
+                                  setEditingUserId(user.id);
+                                }}
+                                className="h-6 w-6 p-0"
+                              >
+                                <Edit3 className="h-3 w-3" />
+                              </Button>
+                              {(() => {
+                                // Check if rating exists
+                                const apiRating = getRatingForUser(user.id);
+                                let hasRating = false;
                                 if (isTVSeries && selectedSeason) {
-                                  const apiRating = getRatingForUser(user.id);
-                                  currentRating = apiRating?.seasonsRatings?.[selectedSeason]?.rating ?? null;
+                                  hasRating = apiRating?.seasonsRatings?.[selectedSeason] !== undefined;
                                 } else {
-                                  const apiRating = getRatingForUser(user.id);
-                                  currentRating = apiRating?.rating ?? null;
+                                  hasRating = apiRating?.rating !== undefined;
                                 }
-                                // Use 0 as default when starting to edit (user can change it)
-                                setTempUserRatings(prev => ({
-                                  ...prev,
-                                  [user.id]: { rating: currentRating ?? 0 }
-                                }));
-                                setEditingUserId(user.id);
-                              }}
-                              className="h-6 w-6 p-0"
-                            >
-                              <Edit3 className="h-3 w-3" />
-                            </Button>
+                                
+                                if (hasRating) {
+                                  return (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteRatingClick(user.id)}
+                                      disabled={deletingRatingId === user.id}
+                                      className="h-6 w-6 p-0"
+                                    >
+                                      <Trash2 className={`h-3 w-3 ${deletingRatingId === user.id ? 'opacity-50' : ''}`} />
+                                    </Button>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </div>
                           ) : null}
                         </div>
                       </div>
@@ -1116,6 +1273,47 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         onConfirm={handleDeleteConfirm}
         loading={deleting}
       />
+      
+      <AlertDialog open={showDeleteRatingModal} onOpenChange={handleDeleteRatingCancel}>
+        <AlertDialogContent className="bg-movie-surface border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">
+              Delete Rating
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              {isTVSeries && selectedSeason
+                ? `Are you sure you want to delete the rating for Season ${selectedSeason}? (Other seasons will be kept)`
+                : 'Are you sure you want to delete this rating? This action cannot be undone.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={handleDeleteRatingCancel}
+              disabled={deletingRatingId !== null}
+              className="bg-movie-surface border-border hover:bg-movie-surface/80"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteRatingConfirm}
+              disabled={deletingRatingId !== null}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingRatingId !== null ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-destructive-foreground/30 border-t-destructive-foreground rounded-full animate-spin" />
+                  Deleting...
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Delete Rating
+                </div>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };

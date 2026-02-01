@@ -420,6 +420,42 @@ export const saveRating = async (ratingData: {
   }
 };
 
+export const deleteRating = async (ratingId: string): Promise<void> => {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/ratings/${ratingId}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to delete rating";
+      console.log("Error deleting rating:", errorData);
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.error("Error deleting rating:", error);
+    throw error;
+  }
+};
+
+export const deleteRatingSeason = async (ratingId: string, season: number): Promise<void> => {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/ratings/${ratingId}/seasons/${season}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to delete season rating";
+      console.log("Error deleting season rating:", errorData);
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.error("Error deleting season rating:", error);
+    throw error;
+  }
+};
+
 export const updateMovieWatchedStatus = async (
   groupId: string,
   titleId: string,
