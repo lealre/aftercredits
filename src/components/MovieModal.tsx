@@ -100,6 +100,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     setWatchedAt(seasonWatched?.watchedAt ?? '');
     setIsEditingWatchedAt(false);
     setTempWatchedAt('');
+    // Reset rating editing state when season changes
+    setEditingUserId(null);
+    setTempUserRatings({});
   }, [isOpen, isTVSeries, selectedSeason, movie.seasonsWatched]);
 
   const loadComments = useCallback(async () => {
