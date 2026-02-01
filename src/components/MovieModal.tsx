@@ -79,6 +79,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [editingCommentText, setEditingCommentText] = useState<string>('');
   const [savingComment, setSavingComment] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [showDeleteCommentModal, setShowDeleteCommentModal] = useState(false);
+  const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
   const [newCommentText, setNewCommentText] = useState<string>('');
   const [addingComment, setAddingComment] = useState(false);
   const [showAddCommentForm, setShowAddCommentForm] = useState(false);
@@ -417,16 +419,18 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     }
   };
 
-  const handleDeleteComment = async (commentId: string) => {
-    const confirmMessage =
-      isTVSeries
-        ? 'Delete this season comment? (Other seasons will be kept)'
-        : 'Are you sure you want to delete this comment?';
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
+  const handleDeleteComment = (commentId: string) => {
+    setCommentToDelete(commentId);
+    setShowDeleteCommentModal(true);
+  };
 
+  const handleDeleteCommentConfirm = async () => {
+    if (!commentToDelete) return;
+    
+    const commentId = commentToDelete;
+    setShowDeleteCommentModal(false);
     setDeletingCommentId(commentId);
+    
     try {
       const groupId = getGroupId();
       if (!groupId) {
@@ -436,6 +440,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
           variant: "destructive",
         });
         setDeletingCommentId(null);
+        setCommentToDelete(null);
         return;
       }
       if (isTVSeries) {
@@ -446,6 +451,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
             variant: "destructive",
           });
           setDeletingCommentId(null);
+          setCommentToDelete(null);
           return;
         }
         await deleteCommentSeason(groupId, movie.imdbId, commentId, parseInt(selectedSeason, 10));
@@ -466,7 +472,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       });
     } finally {
       setDeletingCommentId(null);
+      setCommentToDelete(null);
     }
+  };
+
+  const handleDeleteCommentCancel = () => {
+    setShowDeleteCommentModal(false);
+    setCommentToDelete(null);
   };
 
   const handleDeleteRatingClick = (userId: string) => {
@@ -820,7 +832,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               <div className="space-y-2">
                 <Select value={selectedSeason} onValueChange={setSelectedSeason}>
                   <SelectTrigger className="w-full bg-movie-surface border-border focus:border-ring focus-visible:border-ring focus:ring-0 focus-visible:ring-0">
-                    <SelectValue placeholder="Select a season" />
+                    <SelectValue placeholder="Select a season">
+                      {selectedSeason ? `Season ${selectedSeason}` : "Select a season"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent 
                     position="popper" 
@@ -830,11 +844,31 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                   >
                     {[...movie.seasons]
                       .sort((a, b) => parseInt(a.season, 10) - parseInt(b.season, 10))
-                      .map((season) => (
-                        <SelectItem key={season.season} value={season.season}>
-                          Season {season.season}
-                        </SelectItem>
-                      ))}
+                      .map((season) => {
+                        // Check if current user has rated this season
+                        const currentUserRating = ratings.find(r => r.userId === currentUserId && r.titleId === movie.imdbId);
+                        const hasRating = currentUserRating?.seasonsRatings?.[season.season] !== undefined;
+                        
+                        // Check if current user has commented on this season
+                        const currentUserComment = allComments.find(c => c.userId === currentUserId);
+                        const hasComment = currentUserComment?.seasonsComments?.[season.season] !== undefined;
+                        
+                        return (
+                          <SelectItem key={season.season} value={season.season} className="[&>span:last-child]:w-full [&>span:first-child]:hidden">
+                            <div className="flex items-center justify-between w-full">
+                              <span className="flex-shrink-0">Season {season.season}</span>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {hasRating && (
+                                  <Star className="w-4 h-4 text-movie-blue" />
+                                )}
+                                {hasComment && (
+                                  <MessageCircle className="w-4 h-4 text-movie-blue" />
+                                )}
+                              </div>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
                   </SelectContent>
                 </Select>
                 {selectedSeason && (() => {
@@ -1308,6 +1342,47 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 <div className="flex items-center gap-2">
                   <Trash2 className="w-4 h-4" />
                   Delete Rating
+                </div>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      <AlertDialog open={showDeleteCommentModal} onOpenChange={handleDeleteCommentCancel}>
+        <AlertDialogContent className="bg-movie-surface border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">
+              Delete Comment
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              {isTVSeries && selectedSeason
+                ? `Are you sure you want to delete the comment for Season ${selectedSeason}? (Other seasons will be kept)`
+                : 'Are you sure you want to delete this comment? This action cannot be undone.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={handleDeleteCommentCancel}
+              disabled={deletingCommentId !== null}
+              className="bg-movie-surface border-border hover:bg-movie-surface/80"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteCommentConfirm}
+              disabled={deletingCommentId !== null}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingCommentId !== null ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-destructive-foreground/30 border-t-destructive-foreground rounded-full animate-spin" />
+                  Deleting...
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Delete Comment
                 </div>
               )}
             </AlertDialogAction>
