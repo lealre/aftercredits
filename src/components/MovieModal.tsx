@@ -134,6 +134,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     // Reset rating editing state when season changes
     setEditingUserId(null);
     setTempUserRatings({});
+    setUserRatings({}); // Clear userRatings to reset state when season changes
     // Reset comment editing state when season changes
     setNewCommentText('');
     setShowAddCommentForm(false);
