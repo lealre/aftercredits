@@ -211,6 +211,10 @@ export const fetchMovies = async (
         searchParams.append("ascending", paginationParams.ascending.toString());
       }
 
+      if (paginationParams.titleType) {
+        searchParams.append("titleType", paginationParams.titleType);
+      }
+
       url += `?${searchParams.toString()}`;
     }
 

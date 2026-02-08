@@ -124,6 +124,7 @@ export interface PaginationParams {
   watched?: boolean;
   orderBy?: string;
   ascending?: boolean;
+  titleType?: 'serie' | 'movie';
 }
 
 export interface UserResponse {

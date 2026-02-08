@@ -19,6 +19,8 @@ interface FilterControlsProps {
   onOrderByChange: (orderBy: string | undefined) => void;
   ascending: boolean;
   onAscendingChange: (ascending: boolean) => void;
+  titleType: 'all' | 'serie' | 'movie' | undefined;
+  onTitleTypeChange: (titleType: 'all' | 'serie' | 'movie' | undefined) => void;
   groups: GroupResponse[];
   currentGroupId: string | null;
   onGroupChange: (groupId: string) => void;
@@ -37,7 +39,7 @@ const sortOptions = [
 const STORAGE_KEY = 'movieFilters';
 
 // Helper functions for localStorage
-const saveFiltersToStorage = (filters: { watchedFilter: string; orderBy?: string; ascending: boolean }) => {
+const saveFiltersToStorage = (filters: { watchedFilter: string; orderBy?: string; ascending: boolean; titleType?: string }) => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
   } catch (error) {
@@ -45,7 +47,7 @@ const saveFiltersToStorage = (filters: { watchedFilter: string; orderBy?: string
   }
 };
 
-export const loadFiltersFromStorage = (): { watchedFilter: string; orderBy?: string; ascending: boolean } | null => {
+export const loadFiltersFromStorage = (): { watchedFilter: string; orderBy?: string; ascending: boolean; titleType?: string } | null => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -73,6 +75,8 @@ export const FilterControls = ({
   onOrderByChange,
   ascending,
   onAscendingChange,
+  titleType,
+  onTitleTypeChange,
   groups,
   currentGroupId,
   onGroupChange,
@@ -81,6 +85,7 @@ export const FilterControls = ({
   const [open, setOpen] = useState(false);
   const [pendingOrderBy, setPendingOrderBy] = useState<string | undefined>(orderBy);
   const [pendingAscending, setPendingAscending] = useState<boolean>(ascending);
+  const [pendingTitleType, setPendingTitleType] = useState<'all' | 'serie' | 'movie' | undefined>(titleType);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
@@ -101,15 +106,17 @@ export const FilterControls = ({
   useEffect(() => {
     setPendingOrderBy(orderBy);
     setPendingAscending(ascending);
-  }, [orderBy, ascending]);
+    setPendingTitleType(titleType);
+  }, [orderBy, ascending, titleType]);
 
   // Reset pending values when popover opens
   useEffect(() => {
     if (open) {
       setPendingOrderBy(orderBy);
       setPendingAscending(ascending);
+      setPendingTitleType(titleType);
     }
-  }, [open, orderBy, ascending]);
+  }, [open, orderBy, ascending, titleType]);
 
   // Save filters to localStorage whenever they change
   useEffect(() => {
@@ -117,12 +124,14 @@ export const FilterControls = ({
       watchedFilter,
       orderBy: orderBy || undefined,
       ascending,
+      titleType: titleType === 'all' ? undefined : titleType,
     });
-  }, [watchedFilter, orderBy, ascending]);
+  }, [watchedFilter, orderBy, ascending, titleType]);
 
   const handleApply = () => {
     onOrderByChange(pendingOrderBy);
     onAscendingChange(pendingAscending);
+    onTitleTypeChange(pendingTitleType);
     setOpen(false);
   };
 
@@ -130,6 +139,7 @@ export const FilterControls = ({
     onWatchedFilterChange('all');
     onOrderByChange(undefined);
     onAscendingChange(true);
+    onTitleTypeChange(undefined);
     clearFiltersFromStorage();
     if (onClearFilters) {
       onClearFilters();
@@ -137,11 +147,12 @@ export const FilterControls = ({
   };
 
   // Check if filters are at default values
-  const hasNonDefaultFilters = watchedFilter !== 'all' || orderBy !== undefined;
+  const hasNonDefaultFilters = watchedFilter !== 'all' || orderBy !== undefined || titleType !== undefined;
 
   const handleCancel = () => {
     setPendingOrderBy(orderBy);
     setPendingAscending(ascending);
+    setPendingTitleType(titleType);
     setOpen(false);
   };
 
@@ -200,12 +211,39 @@ export const FilterControls = ({
                 <div className="space-y-4">
                   <div>
                     <h4 className="font-medium leading-none mb-1 text-sm sm:text-base">Advanced Filters</h4>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
-                      Configure how movies are sorted and filtered
-                    </p>
                   </div>
                   
                   <div className="space-y-4 pt-2">
+                    <div className="space-y-2">
+                      <label className="text-xs sm:text-sm font-medium">Type</label>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant={pendingTitleType === undefined || pendingTitleType === 'all' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setPendingTitleType(undefined)}
+                          className={`text-xs sm:text-sm ${pendingTitleType === undefined || pendingTitleType === 'all' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                        >
+                          All
+                        </Button>
+                        <Button
+                          variant={pendingTitleType === 'serie' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setPendingTitleType('serie')}
+                          className={`text-xs sm:text-sm ${pendingTitleType === 'serie' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                        >
+                          Series
+                        </Button>
+                        <Button
+                          variant={pendingTitleType === 'movie' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setPendingTitleType('movie')}
+                          className={`text-xs sm:text-sm ${pendingTitleType === 'movie' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                        >
+                          Movies
+                        </Button>
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       <label className="text-xs sm:text-sm font-medium">Sort by</label>
                       <div className="flex flex-wrap gap-2">

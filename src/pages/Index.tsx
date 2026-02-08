@@ -23,6 +23,14 @@ const Index = () => {
     const stored = loadFiltersFromStorage();
     return (stored?.watchedFilter as 'all' | 'watched' | 'unwatched') || 'all';
   });
+  const [titleType, setTitleType] = useState<'all' | 'serie' | 'movie' | undefined>(() => {
+    const stored = loadFiltersFromStorage();
+    const storedTitleType = stored?.titleType;
+    if (!storedTitleType || storedTitleType === 'all') {
+      return undefined;
+    }
+    return storedTitleType as 'serie' | 'movie';
+  });
   const [groupData, setGroupData] = useState<GroupResponse | null>(null);
   const [allGroups, setAllGroups] = useState<GroupResponse[]>([]);
   const [hasNoGroups, setHasNoGroups] = useState(false);
@@ -31,6 +39,8 @@ const Index = () => {
   
   // Convert filter to boolean or undefined for the API
   const watchedFilterValue = watchedFilter === 'all' ? undefined : watchedFilter === 'watched';
+  // Convert titleType: undefined or 'all' -> undefined, 'serie' or 'movie' -> pass as is
+  const titleTypeValue = titleType === 'all' || titleType === undefined ? undefined : titleType;
   
   const { 
     movies, 
@@ -48,7 +58,7 @@ const Index = () => {
     setOrderBy,
     ascending,
     setAscending,
-  } = useMovies(watchedFilterValue);
+  } = useMovies(watchedFilterValue, titleTypeValue);
   
   // Load orderBy and ascending from localStorage on mount (only once)
   useEffect(() => {
@@ -63,6 +73,10 @@ const Index = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
+
+  const handleTitleTypeChange = (newTitleType: 'all' | 'serie' | 'movie' | undefined) => {
+    setTitleType(newTitleType);
+  };
   const { users, getUserNameById } = useUsers();
   
   const getRatingForUser = useCallback((titleId: string, userId: string) => {
@@ -253,6 +267,8 @@ const Index = () => {
               onOrderByChange={setOrderBy}
               ascending={ascending}
               onAscendingChange={setAscending}
+              titleType={titleType}
+              onTitleTypeChange={handleTitleTypeChange}
               groups={allGroups}
               currentGroupId={getGroupId()}
               onGroupChange={handleGroupChange}

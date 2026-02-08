@@ -3,7 +3,7 @@ import { Movie, PaginatedResponse, PaginationParams, Rating } from "@/types/movi
 import { fetchMovies } from "@/services/backendService";
 import { getGroupId, handleUnauthorized } from "@/services/authService";
 
-export const useMovies = (watchedFilter?: boolean) => {
+export const useMovies = (watchedFilter?: boolean, titleType?: 'serie' | 'movie') => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -40,6 +40,10 @@ export const useMovies = (watchedFilter?: boolean) => {
         if (params.ascending === undefined) {
           params.ascending = orderBy ? ascending : undefined;
         }
+        // Add titleType if not provided
+        if (params.titleType === undefined) {
+          params.titleType = titleType;
+        }
 
         const groupId = getGroupId();
         if (!groupId) {
@@ -64,7 +68,7 @@ export const useMovies = (watchedFilter?: boolean) => {
         setLoading(false);
       }
     },
-    [ascending, orderBy, watchedFilter],
+    [ascending, orderBy, watchedFilter, titleType],
   );
 
   useEffect(() => {
@@ -74,8 +78,9 @@ export const useMovies = (watchedFilter?: boolean) => {
       watched: watchedFilter,
       orderBy,
       ascending: orderBy ? ascending : undefined,
+      titleType,
     });
-  }, [ascending, loadMovies, orderBy, watchedFilter]);
+  }, [ascending, loadMovies, orderBy, watchedFilter, titleType]);
 
   const updateMovie = (id: string, updates: Partial<Movie>) => {
     const newMovies = movies.map((movie) =>
@@ -96,6 +101,7 @@ export const useMovies = (watchedFilter?: boolean) => {
       watched: watchedFilter,
       orderBy,
       ascending: orderBy ? ascending : undefined,
+      titleType,
     });
   };
 
@@ -106,6 +112,7 @@ export const useMovies = (watchedFilter?: boolean) => {
       watched: watchedFilter,
       orderBy,
       ascending: orderBy ? ascending : undefined,
+      titleType,
     });
   };
 
@@ -116,6 +123,7 @@ export const useMovies = (watchedFilter?: boolean) => {
       watched: watchedFilter,
       orderBy,
       ascending: orderBy ? ascending : undefined,
+      titleType,
     });
   };
 
