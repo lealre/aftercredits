@@ -12,6 +12,7 @@ interface PaginationProps {
   loading?: boolean;
   orderBy?: string;
   ascending?: boolean;
+  titleType?: 'all' | 'serie' | 'movie' | undefined;
 }
 
 // Helper function to get visible pages for pagination
@@ -60,9 +61,23 @@ export const PaginationSummary = ({
   loading = false,
   orderBy,
   ascending,
+  titleType,
 }: Omit<PaginationProps, 'onPageChange'>) => {
   const startResult = (currentPage - 1) * pageSize + 1;
   const endResult = Math.min(currentPage * pageSize, totalResults);
+
+  // Build filter description parts
+  const filterParts: string[] = [];
+  if (orderBy) {
+    const sortLabel = sortOptions.find((opt) => opt.value === orderBy)?.label || orderBy;
+    filterParts.push(`Filtering by ${sortLabel} (${ascending ? 'Asc' : 'Desc'})`);
+  }
+  if (titleType === 'serie' || titleType === 'movie') {
+    const titleTypeLabel = titleType === 'serie' ? 'Series' : 'Movies';
+    filterParts.push(titleTypeLabel);
+  }
+
+  const filterDescription = filterParts.length > 0 ? ` | ${filterParts.join(' | ')}` : '';
 
   if (totalPages <= 1) {
     return (
@@ -70,6 +85,9 @@ export const PaginationSummary = ({
         <div className="flex items-center space-x-2">
           <p className="text-xs sm:text-sm text-muted-foreground">
             Showing {totalResults} result{totalResults !== 1 ? 's' : ''}
+            {filterDescription && (
+              <span className="text-muted-foreground">{filterDescription}</span>
+            )}
           </p>
         </div>
         <div className="flex items-center space-x-2">
@@ -100,11 +118,8 @@ export const PaginationSummary = ({
           <span className="hidden sm:inline">Showing </span>
           {startResult}-{endResult} <span className="hidden sm:inline">of {totalResults} results</span>
           <span className="sm:hidden"> / {totalResults}</span>
-          {orderBy && (
-            <span className="text-muted-foreground">
-              {' | Filtering by '}
-              {sortOptions.find((opt) => opt.value === orderBy)?.label || orderBy} ({ascending ? 'Asc' : 'Desc'})
-            </span>
+          {filterDescription && (
+            <span className="text-muted-foreground">{filterDescription}</span>
           )}
         </p>
       </div>

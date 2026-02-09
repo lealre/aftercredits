@@ -23,6 +23,7 @@ interface MovieGridProps {
   loading?: boolean;
   orderBy?: string;
   ascending?: boolean;
+  titleType?: 'all' | 'serie' | 'movie' | undefined;
 }
 
 export const MovieGrid = ({ 
@@ -41,8 +42,29 @@ export const MovieGrid = ({
   loading = false,
   orderBy,
   ascending,
+  titleType,
 }: MovieGridProps) => {
-  if (movies.length === 0) {
+  if (movies.length === 0 && !loading) {
+    // Check if a titleType filter is active
+    const hasTitleTypeFilter = titleType === 'serie' || titleType === 'movie';
+    
+    if (hasTitleTypeFilter) {
+      // Show filter-specific message when a filter is active but no results
+      const filterLabel = titleType === 'serie' ? 'series' : 'movies';
+      return (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-24 h-24 rounded-full bg-movie-surface flex items-center justify-center mb-4">
+            <span className="text-3xl">🔍</span>
+          </div>
+          <h3 className="text-xl font-semibold text-foreground mb-2">No titles found for this filter</h3>
+          <p className="text-muted-foreground max-w-md">
+            There are no {filterLabel} matching your current filter criteria. Try adjusting your filters or add some {filterLabel} to your collection.
+          </p>
+        </div>
+      );
+    }
+    
+    // Show default message when no filter is active
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <div className="w-24 h-24 rounded-full bg-movie-surface flex items-center justify-center mb-4">
@@ -71,6 +93,7 @@ export const MovieGrid = ({
             loading={loading}
             orderBy={orderBy}
             ascending={ascending}
+            titleType={titleType}
           />
         </div>
       )}

@@ -262,7 +262,6 @@ const Index = () => {
             <FilterControls
               watchedFilter={watchedFilter}
               onWatchedFilterChange={setWatchedFilter}
-              movieCount={pagination.totalResults}
               orderBy={orderBy}
               onOrderByChange={setOrderBy}
               ascending={ascending}
@@ -299,6 +298,7 @@ const Index = () => {
               loading={loading}
               orderBy={orderBy}
               ascending={ascending}
+              titleType={titleType}
             />
           </>
         )}

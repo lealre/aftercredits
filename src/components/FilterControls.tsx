@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ArrowUpDown, Filter, ChevronDown, X } from 'lucide-react';
 import {
   Select,
@@ -14,7 +13,6 @@ import { GroupResponse } from '@/types/movie';
 interface FilterControlsProps {
   watchedFilter: 'all' | 'watched' | 'unwatched';
   onWatchedFilterChange: (filter: 'all' | 'watched' | 'unwatched') => void;
-  movieCount: number;
   orderBy: string | undefined;
   onOrderByChange: (orderBy: string | undefined) => void;
   ascending: boolean;
@@ -70,7 +68,6 @@ const clearFiltersFromStorage = () => {
 export const FilterControls = ({ 
   watchedFilter, 
   onWatchedFilterChange, 
-  movieCount,
   orderBy,
   onOrderByChange,
   ascending,
@@ -310,9 +307,6 @@ export const FilterControls = ({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="bg-movie-surface border-movie-blue/30 text-xs sm:text-sm w-fit sm:w-auto">
-            {movieCount} movies
-          </Badge>
           {groups.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">Group:</span>
