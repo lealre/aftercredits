@@ -111,15 +111,6 @@ export const MovieCard = ({
               {movie.imdbRating}
             </Badge>
           </div>
-
-          {/* Watched Status */}
-          <div className="absolute top-3 right-3">
-            {watchedDisplay.watched ? (
-              <Eye className="w-4 h-4 text-movie-rating" />
-            ) : (
-              <EyeOff className="w-4 h-4 text-muted-foreground" />
-            )}
-          </div>
         </div>
 
         <div className="p-4">
@@ -130,12 +121,29 @@ export const MovieCard = ({
           {movie.type === "movie" ? "Movie" : "TV Series"} • {movie.year} • {movie.genre}
           </p>
 
-          {/* Watched Date */}
-          {watchedDisplay.watched && watchedDisplay.watchedAt && (
-            <p className="text-xs text-movie-rating mb-2">
-              Watched on {formatDate(watchedDisplay.watchedAt)}
-            </p>
-          )}
+          {/* Watched Status */}
+          <div className="flex items-center gap-1.5 mb-2">
+            {watchedDisplay.watched ? (
+              <>
+                <Eye className="w-4 h-4 text-movie-rating flex-shrink-0" />
+                {watchedDisplay.watchedAt && (
+                  <>
+                    <span className="text-movie-rating">•</span>
+                    <p className="text-xs text-movie-rating">
+                      {formatDate(watchedDisplay.watchedAt)}
+                    </p>
+                  </>
+                )}
+              </>
+            ) : (
+              <div className="relative inline-flex items-center">
+                <EyeOff className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-5 h-0.5 bg-muted-foreground rotate-45 origin-center" />
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Personal Ratings */}
           <div className="space-y-1">
