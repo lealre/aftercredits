@@ -9,6 +9,7 @@ import {
   PaginationParams,
   UserResponse,
   GroupResponse,
+  SearchTitle,
 } from "@/types/movie";
 import {
   getToken,
@@ -280,6 +281,21 @@ export const addMovieToBackend = async (
     console.error("Error adding movie:", error);
     throw error;
   }
+};
+
+export const searchTitles = async (
+  query: string,
+  limit: number = 10
+): Promise<SearchTitle[]> => {
+  const encodedQuery = encodeURIComponent(query.trim());
+  const url = `${API_BASE_URL}/titles/search?query=${encodedQuery}&limit=${limit}`;
+  const response = await authFetch(url);
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json();
+    const message = errorData.errorMessage || "Failed to search titles";
+    throw new Error(message);
+  }
+  return response.json();
 };
 
 export const fetchUsers = async (groupId: string): Promise<User[]> => {

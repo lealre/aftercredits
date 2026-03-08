@@ -253,10 +253,11 @@ const Index = () => {
           </div>
         ) : (
           <>
-            <AddMovieForm 
+            <AddMovieForm
               onRefresh={refreshMovies}
-              loading={adding} 
-              setLoading={setAdding} 
+              loading={adding}
+              setLoading={setAdding}
+              existingTitleIds={movies.map((m) => m.imdbId || m.id)}
             />
             
             <FilterControls

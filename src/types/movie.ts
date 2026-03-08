@@ -148,3 +148,22 @@ export interface GroupResponse {
   createdAt: string;
   updatedAt: string;
 }
+
+/** Search result item from GET /titles/search */
+export interface SearchTitle {
+  id: string;
+  type: string;
+  primaryTitle: string;
+  originalTitle: string;
+  primaryImage: {
+    url: string;
+    width: number;
+    height: number;
+  };
+  startYear: number;
+  endYear?: number;
+  rating: {
+    aggregateRating: number;
+    voteCount: number;
+  };
+}
