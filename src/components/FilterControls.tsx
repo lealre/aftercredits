@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupResponse } from '@/types/movie';
+import { sortOptions } from '@/lib/constants';
 
 interface FilterControlsProps {
   watchedFilter: 'all' | 'watched' | 'unwatched';
@@ -24,15 +25,6 @@ interface FilterControlsProps {
   onGroupChange: (groupId: string) => void;
   onClearFilters?: () => void;
 }
-
-const sortOptions = [
-  { value: 'primaryTitle', label: 'Title' },
-  { value: 'imdbRating', label: 'IMDB Rating' },
-  { value: 'startYear', label: 'Year' },
-  { value: 'runtimeSeconds', label: 'Duration' },
-  { value: 'addedAt', label: 'Added Date' },
-  { value: 'watchedAt', label: 'Watched Date' },
-];
 
 const STORAGE_KEY = 'movieFilters';
 

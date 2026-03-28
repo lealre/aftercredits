@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Movie, User, Rating, Comment, SeasonRating } from '@/types/movie';
+import { useState, useEffect, useCallback } from 'react';
+import { Movie, User, Rating, SeasonRating } from '@/types/movie';
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -30,11 +29,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Star, Trash2, ExternalLink, X, Edit3, XCircle, MessageCircle, Trash, Check } from 'lucide-react';
+import { Star, Trash2, ExternalLink, X, Edit3, XCircle, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, fetchComments, createComment, updateComment, deleteComment, deleteCommentSeason, deleteRating, deleteRatingSeason as deleteRatingSeasonService } from '@/services/backendService';
+import { CommentsSection } from './modal/CommentsSection';
+import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, deleteRating, deleteRatingSeason as deleteRatingSeasonService } from '@/services/backendService';
 import { getGroupId, getUserId } from '@/services/authService';
 
 interface MovieModalProps {
@@ -59,8 +59,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const isTVSeries = movie.type === 'tvSeries' || movie.type === 'tvMiniSeries';
   
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
-  const [allComments, setAllComments] = useState<Comment[]>([]); // Store all comments from API
-  const [loadingComments, setLoadingComments] = useState(false);
   // Initialize watched state directly from movie prop - update only when modal opens with new movie
   const [watched, setWatched] = useState(() => movie.watched || false);
   const [watchedAt, setWatchedAt] = useState(() => movie.watchedAt || '');
@@ -75,16 +73,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-  const [editingCommentText, setEditingCommentText] = useState<string>('');
-  const [savingComment, setSavingComment] = useState(false);
-  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
-  const [showDeleteCommentModal, setShowDeleteCommentModal] = useState(false);
-  const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
-  const [newCommentText, setNewCommentText] = useState<string>('');
-  const [addingComment, setAddingComment] = useState(false);
-  const [showAddCommentForm, setShowAddCommentForm] = useState(false);
-  
   // Track the movie ID to detect when it changes
   const [lastMovieId, setLastMovieId] = useState<string | null>(null);
   
@@ -135,76 +123,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     setEditingUserId(null);
     setTempUserRatings({});
     setUserRatings({}); // Clear userRatings to reset state when season changes
-    // Reset comment editing state when season changes
-    setNewCommentText('');
-    setShowAddCommentForm(false);
-    setEditingCommentId(null);
-    setEditingCommentText('');
   }, [isOpen, isTVSeries, selectedSeason, movie.seasonsWatched]);
 
-  const loadComments = useCallback(async () => {
-    setLoadingComments(true);
-    try {
-      const groupId = getGroupId();
-      if (!groupId) {
-        // No group selected - just set empty comments
-        setAllComments([]);
-        setLoadingComments(false);
-        return;
-      }
-      const loadedComments = await fetchComments(groupId, movie.imdbId);
-      // Store all comments without filtering - we'll filter by season in display logic
-      setAllComments(Array.isArray(loadedComments) ? loadedComments : []);
-    } catch (error) {
-      console.error('Error loading comments:', error);
-      // If error, just set empty array
-      setAllComments([]);
-    } finally {
-      setLoadingComments(false);
-    }
-  }, [movie.imdbId]);
-
-  // Filter comments based on selected season (for display only)
-  const comments = useMemo(() => {
-    if (isTVSeries && selectedSeason) {
-      // For TV series, show comments that have a comment for this season
-      return allComments
-        .filter(comment => {
-          return comment.seasonsComments && comment.seasonsComments[selectedSeason] !== undefined;
-        })
-        .map(comment => ({
-          ...comment,
-          comment: comment.seasonsComments?.[selectedSeason]?.comment || comment.comment || '',
-        }));
-    } else {
-      // For movies, show regular comments
-      return allComments
-        .filter(comment => comment.comment !== undefined && comment.comment !== null)
-        .map(comment => ({
-          ...comment,
-          comment: comment.comment || '',
-        }));
-    }
-  }, [allComments, isTVSeries, selectedSeason]);
-
-  // No longer needed - comments are always created by current user
-
-  // Load comments only when modal opens - defer to next tick to not block rendering
   useEffect(() => {
-    if (isOpen) {
-      // Use setTimeout to defer to next event loop tick, allowing modal to render first
-      const timer = setTimeout(() => {
-        loadComments();
-      }, 0);
-      return () => clearTimeout(timer);
-    } else {
+    if (!isOpen) {
       // Reset state when modal closes - revert to original movie data
-      setAllComments([]);
       setUserRatings({});
-      setEditingCommentId(null);
-      setEditingCommentText('');
-      setNewCommentText('');
-      setShowAddCommentForm(false);
       setWatched(movie.watched || false);
       setWatchedAt(movie.watchedAt || '');
       setIsEditingWatchedAt(false);
@@ -212,7 +136,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       setEditingUserId(null);
       setTempUserRatings({});
     }
-  }, [isOpen, loadComments]);
+  }, [isOpen, movie.watched, movie.watchedAt]);
 
   const updateUserRating = (userId: string, rating: number) => {
     if (editingUserId === userId) {
@@ -271,215 +195,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       const apiRating = getRatingForUser(userId);
       return apiRating?.rating ?? null;
     }
-  };
-
-  const formatDate = useCallback((dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInMs = now.getTime() - date.getTime();
-    const diffInHours = diffInMs / (1000 * 60 * 60);
-    const diffInDays = diffInMs / (1000 * 60 * 60 * 24);
-
-    if (diffInHours < 1) {
-      const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-      return diffInMinutes <= 1 ? 'just now' : `${diffInMinutes}m ago`;
-    } else if (diffInHours < 24) {
-      const hours = Math.floor(diffInHours);
-      return `${hours}h ago`;
-    } else if (diffInDays < 7) {
-      const days = Math.floor(diffInDays);
-      return `${days}d ago`;
-    } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
-    }
-  }, []);
-
-  const handleEditComment = (comment: Comment) => {
-    setEditingCommentId(comment.id);
-    // For TV series, get the season-specific comment; for movies, use regular comment
-    const commentText = isTVSeries && selectedSeason && comment.seasonsComments
-      ? comment.seasonsComments[selectedSeason]?.comment || ''
-      : comment.comment || '';
-    setEditingCommentText(commentText);
-  };
-
-  const handleCancelEditComment = () => {
-    setEditingCommentId(null);
-    setEditingCommentText('');
-  };
-
-  const handleSaveEditComment = async (commentId: string) => {
-    const trimmedComment = editingCommentText.trim();
-    
-    if (!trimmedComment || trimmedComment.length === 0) {
-      toast({
-        title: "Error",
-        description: "Comment cannot be empty or contain only spaces.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // For TV series, ensure a season is selected
-    if (isTVSeries && !selectedSeason) {
-      toast({
-        title: "Season required",
-        description: "Please select a season before updating the comment.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setSavingComment(true);
-    try {
-      const groupId = getGroupId();
-      if (!groupId) {
-        toast({
-          title: "No group selected",
-          description: "Please select a group to update comments.",
-          variant: "destructive",
-        });
-        setSavingComment(false);
-        return;
-      }
-      // For TV series, pass the selected season; for movies, don't pass season
-      const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
-      await updateComment(groupId, movie.imdbId, commentId, trimmedComment, season);
-      await loadComments();
-      setEditingCommentId(null);
-      setEditingCommentText('');
-      toast({
-        title: "Comment updated!",
-        description: "Your comment has been updated.",
-      });
-    } catch (error) {
-      console.error('Error updating comment:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update comment. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingComment(false);
-    }
-  };
-
-  const handleAddComment = async () => {
-    const trimmedComment = newCommentText.trim();
-    
-    if (!trimmedComment || trimmedComment.length === 0) {
-      toast({
-        title: "Error",
-        description: "Comment cannot be empty or contain only spaces.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // For TV series, ensure a season is selected
-    if (isTVSeries && !selectedSeason) {
-      toast({
-        title: "Season required",
-        description: "Please select a season before adding a comment.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const groupId = getGroupId();
-    if (!groupId) {
-      toast({
-        title: "No group selected",
-        description: "Please select a group to add comments.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setAddingComment(true);
-    try {
-      // For TV series, pass the selected season; for movies, don't pass season
-      const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
-      await createComment(groupId, movie.imdbId, trimmedComment, season);
-      await loadComments();
-      setNewCommentText('');
-      setShowAddCommentForm(false);
-      toast({
-        title: "Comment added!",
-        description: "Your comment has been added.",
-      });
-    } catch (error) {
-      console.error('Error adding comment:', error);
-      toast({
-        title: "Error",
-        description: "Failed to add comment. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setAddingComment(false);
-    }
-  };
-
-  const handleDeleteComment = (commentId: string) => {
-    setCommentToDelete(commentId);
-    setShowDeleteCommentModal(true);
-  };
-
-  const handleDeleteCommentConfirm = async () => {
-    if (!commentToDelete) return;
-    
-    const commentId = commentToDelete;
-    setShowDeleteCommentModal(false);
-    setDeletingCommentId(commentId);
-    
-    try {
-      const groupId = getGroupId();
-      if (!groupId) {
-        toast({
-          title: "No group selected",
-          description: "Please select a group to delete comments.",
-          variant: "destructive",
-        });
-        setDeletingCommentId(null);
-        setCommentToDelete(null);
-        return;
-      }
-      if (isTVSeries) {
-        if (!selectedSeason) {
-          toast({
-            title: "Season required",
-            description: "Please select a season before deleting a season comment.",
-            variant: "destructive",
-          });
-          setDeletingCommentId(null);
-          setCommentToDelete(null);
-          return;
-        }
-        await deleteCommentSeason(groupId, movie.imdbId, commentId, parseInt(selectedSeason, 10));
-      } else {
-        await deleteComment(groupId, movie.imdbId, commentId);
-      }
-      await loadComments();
-      toast({
-        title: "Comment deleted",
-        description: "The comment has been removed.",
-      });
-    } catch (error) {
-      console.error('Error deleting comment:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete comment. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setDeletingCommentId(null);
-      setCommentToDelete(null);
-    }
-  };
-
-  const handleDeleteCommentCancel = () => {
-    setShowDeleteCommentModal(false);
-    setCommentToDelete(null);
   };
 
   const handleDeleteRatingClick = (userId: string) => {
@@ -850,10 +565,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         const currentUserRating = ratings.find(r => r.userId === currentUserId && r.titleId === movie.imdbId);
                         const hasRating = currentUserRating?.seasonsRatings?.[season.season] !== undefined;
                         
-                        // Check if current user has commented on this season
-                        const currentUserComment = allComments.find(c => c.userId === currentUserId);
-                        const hasComment = currentUserComment?.seasonsComments?.[season.season] !== undefined;
-                        
                         return (
                           <SelectItem key={season.season} value={season.season} className="[&>span:last-child]:w-full [&>span:first-child]:hidden">
                             <div className="flex items-center justify-between w-full">
@@ -861,9 +572,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                               <div className="flex items-center gap-2 flex-shrink-0">
                                 {hasRating && (
                                   <Star className="w-4 h-4 text-movie-blue" />
-                                )}
-                                {hasComment && (
-                                  <MessageCircle className="w-4 h-4 text-movie-blue" />
                                 )}
                               </div>
                             </div>
@@ -1130,151 +838,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
             <Separator className="bg-border" />
 
             {/* Comments Section */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
-                <MessageCircle className="w-4 h-4" />
-                Comments ({comments.length})
-              </h3>
-              {/* Comments Feed */}
-              <div className="space-y-3 overflow-x-hidden max-h-[300px] overflow-y-auto">
-                {loadingComments ? (
-                  <div className="text-center text-xs text-muted-foreground py-2">Loading comments...</div>
-                ) : comments.length === 0 ? (
-                  <div className="text-center text-xs text-muted-foreground py-2">No comments yet. Be the first to comment!</div>
-                ) : (
-                  comments.map((comment) => {
-                        const isEditing = editingCommentId === comment.id;
-                        const isUpdated = comment.updatedAt !== comment.createdAt;
-
-                        return (
-                          <div key={comment.id} className="bg-movie-surface border border-border rounded-lg p-3 space-y-2 overflow-x-hidden">
-                            {/* Comment Header */}
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-semibold text-foreground">{getUserNameById(comment.userId)}</span>
-                                  <span className="text-xs text-muted-foreground">•</span>
-                                  <span className="text-xs text-muted-foreground">{formatDate(comment.createdAt)}</span>
-                                  {isUpdated && (
-                                    <>
-                                      <span className="text-xs text-muted-foreground">•</span>
-                                      <span className="text-xs text-muted-foreground italic">edited {formatDate(comment.updatedAt)}</span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              {!isEditing && currentUserId && comment.userId === currentUserId && (
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleEditComment(comment)}
-                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                                  >
-                                    <Edit3 className="w-3 h-3" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleDeleteComment(comment.id)}
-                                    disabled={deletingCommentId === comment.id}
-                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                                  >
-                                    {deletingCommentId === comment.id ? (
-                                      <X className="w-3 h-3 animate-spin" />
-                                    ) : (
-                                      <Trash className="w-3 h-3" />
-                                    )}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Comment Content */}
-                            {isEditing ? (
-                              <div className="space-y-2">
-                                <Textarea
-                                  value={editingCommentText}
-                                  onChange={(e) => setEditingCommentText(e.target.value)}
-                                  placeholder="Write your comment..."
-                                  className="bg-background border-border resize-none min-h-[70px] text-sm"
-                                  rows={3}
-                                />
-                                <div className="flex gap-2 justify-end">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleCancelEditComment}
-                                    disabled={savingComment}
-                                    className="h-8 text-xs"
-                                  >
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleSaveEditComment(comment.id)}
-                                    disabled={savingComment || !editingCommentText.trim() || editingCommentText.trim().length === 0}
-                                    className="h-8 text-xs bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light"
-                                  >
-                                    {savingComment ? 'Saving...' : 'Save'}
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-sm text-foreground whitespace-pre-wrap break-words max-w-full">{comment.comment}</p>
-                            )}
-                          </div>
-                        );
-                      })
-                )}
-              </div>
-
-              {/* Add Comment Button */}
-              {!showAddCommentForm && (
-                <Button
-                  variant="outline"
-                  onClick={() => setShowAddCommentForm(true)}
-                  className="w-full border-movie-blue/30 text-movie-blue hover:bg-movie-blue/10"
-                >
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  Add Comment
-                </Button>
-              )}
-
-              {/* Add Comment Form */}
-              {showAddCommentForm && (
-                <div className="space-y-2 pt-2 border-t border-border">
-                  <Textarea
-                    value={newCommentText}
-                    onChange={(e) => setNewCommentText(e.target.value)}
-                    placeholder="Write your comment..."
-                    className="bg-background border-border resize-none min-h-[70px] text-sm"
-                    rows={3}
-                  />
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setShowAddCommentForm(false);
-                        setNewCommentText('');
-                      }}
-                      disabled={addingComment}
-                      className="flex-1 h-8 text-xs"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleAddComment}
-                      disabled={addingComment || !newCommentText.trim() || newCommentText.trim().length === 0}
-                      className="flex-1 h-8 text-xs bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light"
-                    >
-                      {addingComment ? 'Adding...' : 'Add Comment'}
-                    </Button>
-                  </div>
-                </div>
-              )}
-                </div>
+            <CommentsSection
+              movieImdbId={movie.imdbId}
+              isOpen={isOpen}
+              isTVSeries={isTVSeries}
+              selectedSeason={selectedSeason}
+              getUserNameById={getUserNameById}
+            />
               </div>
 
               {/* Actions - Fixed at bottom on desktop, normal flow on mobile */}
@@ -1350,46 +920,6 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         </AlertDialogContent>
       </AlertDialog>
       
-      <AlertDialog open={showDeleteCommentModal} onOpenChange={handleDeleteCommentCancel}>
-        <AlertDialogContent className="bg-movie-surface border-border">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive">
-              Delete Comment
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-muted-foreground">
-              {isTVSeries && selectedSeason
-                ? `Are you sure you want to delete the comment for Season ${selectedSeason}? (Other seasons will be kept)`
-                : 'Are you sure you want to delete this comment? This action cannot be undone.'}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel 
-              onClick={handleDeleteCommentCancel}
-              disabled={deletingCommentId !== null}
-              className="bg-movie-surface border-border hover:bg-movie-surface/80"
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteCommentConfirm}
-              disabled={deletingCommentId !== null}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deletingCommentId !== null ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-destructive-foreground/30 border-t-destructive-foreground rounded-full animate-spin" />
-                  Deleting...
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Trash2 className="w-4 h-4" />
-                  Delete Comment
-                </div>
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Dialog>
   );
 };
