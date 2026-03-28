@@ -12,6 +12,7 @@ import { getGroupId, getUserId, saveGroupId } from '@/services/authService';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CreateGroupModal } from '@/components/CreateGroupModal';
+import { ScrollToTopButton } from '@/components/ScrollToTopButton';
 
 // Load filters once at module level for initial state
 const initialFilters = loadFiltersFromStorage();
@@ -205,6 +206,7 @@ const Index = () => {
         onOpenChange={setIsCreateModalOpen}
         onSuccess={handleGroupCreated}
       />
+      <ScrollToTopButton />
     </div>
   );
 };
