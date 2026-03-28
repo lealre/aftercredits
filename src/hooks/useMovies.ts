@@ -1,130 +1,80 @@
-import { useState, useEffect, useCallback } from "react";
-import { Movie, PaginatedResponse, PaginationParams, Rating } from "@/types/movie";
+import { useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Movie, PaginationParams, Rating } from "@/types/movie";
 import { fetchMovies } from "@/services/backendService";
-import { getGroupId, handleUnauthorized } from "@/services/authService";
+import { getGroupId } from "@/services/authService";
 
 export const useMovies = (watchedFilter?: boolean, titleType?: 'serie' | 'movie') => {
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
-  const [ratingsMap, setRatingsMap] = useState<Record<string, Rating[]>>({});
-  const [pagination, setPagination] = useState({
-    page: 1,
-    size: 20,
-    totalPages: 0,
-    totalResults: 0,
-  });
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(20);
   const [orderBy, setOrderBy] = useState<string | undefined>(undefined);
   const [ascending, setAscending] = useState<boolean>(true);
 
-  const loadMovies = useCallback(
-    async (paginationParams?: PaginationParams) => {
-      setLoading(true);
-      try {
-        // Use provided params or defaults, ensuring watched filter is always included
-        const params: PaginationParams = paginationParams || {
-          page: 1,
-          size: 20,
-          watched: watchedFilter,
-        };
+  const groupId = getGroupId();
 
-        // If watched wasn't explicitly provided, use the hook's filter
-        if (params.watched === undefined) {
-          params.watched = watchedFilter;
-        }
+  const params: PaginationParams = {
+    page,
+    size,
+    watched: watchedFilter,
+    orderBy,
+    ascending: orderBy ? ascending : undefined,
+    titleType,
+  };
 
-        // Add sorting parameters if not provided
-        if (params.orderBy === undefined) {
-          params.orderBy = orderBy;
-        }
-        if (params.ascending === undefined) {
-          params.ascending = orderBy ? ascending : undefined;
-        }
-        // Add titleType if not provided
-        if (params.titleType === undefined) {
-          params.titleType = titleType;
-        }
+  const queryKey = ['movies', groupId, page, size, watchedFilter, orderBy, ascending, titleType];
 
-        const groupId = getGroupId();
-        if (!groupId) {
-          // No group selected - return early without setting error
-          // Let the component handle the UI state
-          setLoading(false);
-          return;
-        }
+  const { data, isLoading: loading } = useQuery({
+    queryKey,
+    queryFn: () => fetchMovies(groupId!, params),
+    enabled: !!groupId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
 
-        const response = await fetchMovies(groupId, params);
-        setMovies(response.Content);
-        setRatingsMap(response.ratingsMap);
-        setPagination({
-          page: response.Page,
-          size: response.Size,
-          totalPages: response.TotalPages,
-          totalResults: response.TotalResults,
-        });
-      } catch (error) {
-        console.error("Error loading movies:", error);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [ascending, orderBy, watchedFilter, titleType],
-  );
-
-  useEffect(() => {
-    loadMovies({
-      page: 1,
-      size: 20,
-      watched: watchedFilter,
-      orderBy,
-      ascending: orderBy ? ascending : undefined,
-      titleType,
-    });
-  }, [ascending, loadMovies, orderBy, watchedFilter, titleType]);
+  const movies = data?.Content ?? [];
+  const ratingsMap = data?.ratingsMap ?? {};
+  const pagination = {
+    page: data?.Page ?? 1,
+    size: data?.Size ?? 20,
+    totalPages: data?.TotalPages ?? 0,
+    totalResults: data?.TotalResults ?? 0,
+  };
 
   const updateMovie = (id: string, updates: Partial<Movie>) => {
-    const newMovies = movies.map((movie) =>
-      movie.id === id ? { ...movie, ...updates } : movie
-    );
-    setMovies(newMovies);
+    queryClient.setQueryData(queryKey, (old: typeof data) => {
+      if (!old) return old;
+      return {
+        ...old,
+        Content: old.Content.map((movie: Movie) =>
+          movie.id === id ? { ...movie, ...updates } : movie
+        ),
+      };
+    });
   };
 
   const deleteMovie = (id: string) => {
-    const newMovies = movies.filter((movie) => movie.id !== id);
-    setMovies(newMovies);
-  };
-
-  const refreshMovies = async () => {
-    await loadMovies({
-      page: pagination.page,
-      size: pagination.size,
-      watched: watchedFilter,
-      orderBy,
-      ascending: orderBy ? ascending : undefined,
-      titleType,
+    queryClient.setQueryData(queryKey, (old: typeof data) => {
+      if (!old) return old;
+      return {
+        ...old,
+        Content: old.Content.filter((movie: Movie) => movie.id !== id),
+        TotalResults: old.TotalResults - 1,
+      };
     });
   };
 
-  const changePage = (page: number) => {
-    loadMovies({
-      page,
-      size: pagination.size,
-      watched: watchedFilter,
-      orderBy,
-      ascending: orderBy ? ascending : undefined,
-      titleType,
-    });
+  const refreshMovies = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['movies', groupId] });
+  }, [queryClient, groupId]);
+
+  const changePage = (newPage: number) => {
+    setPage(newPage);
   };
 
-  const changePageSize = (size: number) => {
-    loadMovies({
-      page: 1,
-      size,
-      watched: watchedFilter,
-      orderBy,
-      ascending: orderBy ? ascending : undefined,
-      titleType,
-    });
+  const changePageSize = (newSize: number) => {
+    setPage(1);
+    setSize(newSize);
   };
 
   return {

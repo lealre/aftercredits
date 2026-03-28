@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { sortOptions } from '@/lib/constants';
 
 interface PaginationProps {
   currentPage: number;
@@ -41,15 +42,6 @@ const getVisiblePages = (currentPage: number, totalPages: number) => {
 
   return rangeWithDots;
 };
-
-const sortOptions = [
-  { value: 'primaryTitle', label: 'Title' },
-  { value: 'imdbRating', label: 'IMDB Rating' },
-  { value: 'startYear', label: 'Year' },
-  { value: 'runtimeSeconds', label: 'Duration' },
-  { value: 'addedAt', label: 'Added Date' },
-  { value: 'watchedAt', label: 'Watched Date' },
-];
 
 // Pagination Summary Component (results count and page size selector)
 export const PaginationSummary = ({
@@ -227,32 +219,3 @@ export const PaginationNavigation = ({
   );
 };
 
-// Main Pagination Component (kept for backward compatibility, but can be removed if not used elsewhere)
-export const Pagination = ({
-  currentPage,
-  totalPages,
-  totalResults,
-  pageSize,
-  onPageChange,
-  onPageSizeChange,
-  loading = false,
-}: PaginationProps) => {
-  return (
-    <div className="flex flex-col gap-4 px-2 w-full">
-      <PaginationSummary
-        currentPage={currentPage}
-        totalPages={totalPages}
-        totalResults={totalResults}
-        pageSize={pageSize}
-        onPageSizeChange={onPageSizeChange}
-        loading={loading}
-      />
-      <PaginationNavigation
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={onPageChange}
-        loading={loading}
-      />
-    </div>
-  );
-};
