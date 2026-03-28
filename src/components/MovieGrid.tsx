@@ -1,3 +1,4 @@
+import { useMemo, useCallback } from 'react';
 import { Movie, User, Rating, SeasonRating } from '@/types/movie';
 import { MovieCard } from './MovieCard';
 import { PaginationSummary, PaginationNavigation } from './Pagination';
@@ -26,12 +27,14 @@ interface MovieGridProps {
   titleType?: 'all' | 'serie' | 'movie' | undefined;
 }
 
-export const MovieGrid = ({ 
-  movies, 
-  onUpdate, 
-  onDelete, 
-  onRefreshMovies, 
-  users, 
+const EMPTY_RATINGS: Rating[] = [];
+
+export const MovieGrid = ({
+  movies,
+  onUpdate,
+  onDelete,
+  onRefreshMovies,
+  users,
   getUserNameById,
   ratingsMap,
   getRatingForUser,
@@ -44,12 +47,21 @@ export const MovieGrid = ({
   ascending,
   titleType,
 }: MovieGridProps) => {
+  // Stable callback that takes titleId — avoids creating a new closure per card
+  const getRatingForUserByTitle = useCallback(
+    (titleId: string, userId: string) => getRatingForUser(titleId, userId),
+    [getRatingForUser]
+  );
+
+  const onRefreshRatingsByTitle = useCallback(
+    (titleId: string) => refreshRatingsForTitle(titleId),
+    [refreshRatingsForTitle]
+  );
+
   if (movies.length === 0 && !loading) {
-    // Check if a titleType filter is active
     const hasTitleTypeFilter = titleType === 'serie' || titleType === 'movie';
-    
+
     if (hasTitleTypeFilter) {
-      // Show filter-specific message when a filter is active but no results
       const filterLabel = titleType === 'serie' ? 'series' : 'movies';
       return (
         <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -63,8 +75,7 @@ export const MovieGrid = ({
         </div>
       );
     }
-    
-    // Show default message when no filter is active
+
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <div className="w-24 h-24 rounded-full bg-movie-surface flex items-center justify-center mb-4">
@@ -72,8 +83,8 @@ export const MovieGrid = ({
         </div>
         <h3 className="text-xl font-semibold text-foreground mb-2">No movies yet</h3>
         <p className="text-muted-foreground max-w-md">
-          Start building your movie collection by adding your first film from IMDB. 
-          You and Bruna can rate and comment on each movie!
+          Start building your movie collection by adding your first film from IMDB.
+          You and your group members can rate and comment on each movie!
         </p>
       </div>
     );
@@ -97,7 +108,7 @@ export const MovieGrid = ({
           />
         </div>
       )}
-      
+
       {/* Movie Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
         {movies.map((movie) => (
@@ -109,13 +120,13 @@ export const MovieGrid = ({
             onRefreshMovies={onRefreshMovies}
             users={users}
             getUserNameById={getUserNameById}
-            ratings={ratingsMap[movie.imdbId] || []}
-            getRatingForUser={(userId) => getRatingForUser(movie.imdbId, userId)}
-            onRefreshRatings={() => refreshRatingsForTitle(movie.imdbId)}
+            ratings={ratingsMap[movie.imdbId] || EMPTY_RATINGS}
+            getRatingForUserByTitle={getRatingForUserByTitle}
+            onRefreshRatingsByTitle={onRefreshRatingsByTitle}
           />
         ))}
       </div>
-      
+
       {/* Pagination Navigation - at the bottom */}
       {pagination && onPageChange && pagination.totalPages > 1 && (
         <div className="flex justify-center pt-6">

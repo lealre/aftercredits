@@ -1,25 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import {
-  getUserId,
-  getToken,
-  getGroupId,
-  handleUnauthorized,
-} from "@/services/authService";
-import { fetchUserById } from "@/services/backendService";
-import { UserResponse } from "@/types/movie";
+import { getUserId, getToken, getGroupId } from "@/services/authService";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const UserAccount = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const userId = getUserId();
   const token = getToken();
-  const [userData, setUserData] = useState<UserResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: userData, isLoading: loading } = useCurrentUser();
 
   useEffect(() => {
     if (!token || !userId) {
@@ -29,28 +21,7 @@ const UserAccount = () => {
         variant: "destructive",
       });
       navigate("/login", { replace: true });
-      return;
     }
-
-    const loadUserData = async () => {
-      setLoading(true);
-      try {
-        const user = await fetchUserById(userId);
-        setUserData(user);
-      } catch (error) {
-        console.error("Error loading user data:", error);
-        toast({
-          title: "Error",
-          description: "Failed to load user data. Please try again.",
-          variant: "destructive",
-        });
-        handleUnauthorized("Failed to load user data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadUserData();
   }, [navigate, toast, token, userId]);
 
   const formattedLastLogin = formatDateTime(userData?.lastLoginAt);
@@ -159,4 +130,3 @@ const formatDateTime = (value?: string | null) => {
   const minutes = pad(d.getMinutes());
   return `${year}-${month}-${day} ${hours}:${minutes}h`;
 };
-

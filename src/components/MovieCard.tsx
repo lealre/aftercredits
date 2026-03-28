@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useState, memo, useCallback } from "react";
 import { Movie, User, Rating, SeasonRating } from "@/types/movie";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Star, MessageCircle, Eye, EyeOff } from "lucide-react";
+import { Star, Eye, EyeOff } from "lucide-react";
 import { MovieModal } from "./MovieModal";
 import { StarRating } from "./StarRating";
-// Ratings are now passed from parent via batch fetch
 
 interface MovieCardProps {
   movie: Movie;
@@ -15,11 +14,11 @@ interface MovieCardProps {
   users: User[];
   getUserNameById: (userId: string) => string;
   ratings: Rating[];
-  getRatingForUser: (userId: string) => { rating: number; seasonsRatings?: Record<string, SeasonRating> } | undefined;
-  onRefreshRatings?: () => void;
+  getRatingForUserByTitle: (titleId: string, userId: string) => { rating: number; seasonsRatings?: Record<string, SeasonRating> } | undefined;
+  onRefreshRatingsByTitle: (titleId: string) => Promise<void>;
 }
 
-export const MovieCard = ({
+export const MovieCard = memo(({
   movie,
   onUpdate,
   onDelete,
@@ -27,12 +26,23 @@ export const MovieCard = ({
   users,
   getUserNameById,
   ratings,
-  getRatingForUser,
-  onRefreshRatings,
+  getRatingForUserByTitle,
+  onRefreshRatingsByTitle,
 }: MovieCardProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const isTVSeries = movie.type === "tvSeries" || movie.type === "tvMiniSeries";
+
+  // Stable callbacks that close over movie.imdbId
+  const getRatingForUser = useCallback(
+    (userId: string) => getRatingForUserByTitle(movie.imdbId, userId),
+    [getRatingForUserByTitle, movie.imdbId]
+  );
+
+  const onRefreshRatings = useCallback(
+    () => onRefreshRatingsByTitle(movie.imdbId),
+    [onRefreshRatingsByTitle, movie.imdbId]
+  );
 
   const getTvSeriesWatchedDisplay = () => {
     const seasonsWatched = movie.seasonsWatched;
@@ -53,7 +63,6 @@ export const MovieCard = ({
       return { watched: true, watchedAt: withDates[0].watchedAt as string };
     }
 
-    // Watched season(s) exist but none have a watchedAt; still show as watched, but no date.
     return { watched: true, watchedAt: undefined as string | undefined };
   };
 
@@ -183,4 +192,6 @@ export const MovieCard = ({
       />
     </>
   );
-};
+});
+
+MovieCard.displayName = 'MovieCard';

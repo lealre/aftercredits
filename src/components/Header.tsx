@@ -1,5 +1,4 @@
 import { Film, LogOut, Users, User, ChevronDown } from 'lucide-react';
-import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from './ui/button';
 import {
@@ -10,9 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { getUserId, getToken, clearToken } from '@/services/authService';
-import { fetchUserById } from '@/services/backendService';
-import { UserResponse } from '@/types/movie';
+import { getToken, clearToken } from '@/services/authService';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useToast } from '@/hooks/use-toast';
 
 export interface HeaderProps {}
@@ -21,9 +19,7 @@ export const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const [userData, setUserData] = useState<UserResponse | null>(null);
-  const [loadingUser, setLoadingUser] = useState(false);
-  const userId = getUserId();
+  const { data: userData, isLoading: loadingUser } = useCurrentUser();
   const token = getToken();
 
   const handleLogout = () => {
@@ -34,28 +30,6 @@ export const Header = () => {
     });
     navigate("/login", { replace: true });
   };
-
-  useEffect(() => {
-    const loadUserData = async () => {
-      if (!userId || !token) {
-        setUserData(null);
-        return;
-      }
-
-      setLoadingUser(true);
-      try {
-        const user = await fetchUserById(userId);
-        setUserData(user);
-      } catch (error) {
-        console.error('Error loading user data:', error);
-        setUserData(null);
-      } finally {
-        setLoadingUser(false);
-      }
-    };
-
-    loadUserData();
-  }, [userId, token]);
 
   const getUserInitial = () => {
     if (userData?.name) {

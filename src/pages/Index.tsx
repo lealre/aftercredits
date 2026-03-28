@@ -1,56 +1,47 @@
-import { useState, useCallback } from 'react';
-import { useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMovies } from '@/hooks/useMovies';
 import { useUsers } from '@/hooks/useUsers';
+import { useGroups } from '@/hooks/useGroups';
 import { Header } from '@/components/Header';
 import { AddMovieForm } from '@/components/AddMovieForm';
 import { MovieGrid } from '@/components/MovieGrid';
 import { FilterControls, loadFiltersFromStorage } from '@/components/FilterControls';
 import { Loader2 } from 'lucide-react';
 import { getGroupId, getUserId, saveGroupId } from '@/services/authService';
-import { fetchGroupById, fetchUserById } from '@/services/backendService';
-import { GroupResponse } from '@/types/movie';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CreateGroupModal } from '@/components/CreateGroupModal';
 
+// Load filters once at module level for initial state
+const initialFilters = loadFiltersFromStorage();
+
 const Index = () => {
   const navigate = useNavigate();
-  
-  // Load filters from localStorage on mount (only once)
-  const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>(() => {
-    const stored = loadFiltersFromStorage();
-    return (stored?.watchedFilter as 'all' | 'watched' | 'unwatched') || 'all';
-  });
+
+  const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>(
+    () => (initialFilters?.watchedFilter as 'all' | 'watched' | 'unwatched') || 'all'
+  );
   const [titleType, setTitleType] = useState<'all' | 'serie' | 'movie' | undefined>(() => {
-    const stored = loadFiltersFromStorage();
-    const storedTitleType = stored?.titleType;
-    if (!storedTitleType || storedTitleType === 'all') {
-      return undefined;
-    }
+    const storedTitleType = initialFilters?.titleType;
+    if (!storedTitleType || storedTitleType === 'all') return undefined;
     return storedTitleType as 'serie' | 'movie';
   });
-  const [groupData, setGroupData] = useState<GroupResponse | null>(null);
-  const [allGroups, setAllGroups] = useState<GroupResponse[]>([]);
-  const [hasNoGroups, setHasNoGroups] = useState(false);
-  const [loadingGroups, setLoadingGroups] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  
+
   // Convert filter to boolean or undefined for the API
   const watchedFilterValue = watchedFilter === 'all' ? undefined : watchedFilter === 'watched';
-  // Convert titleType: undefined or 'all' -> undefined, 'serie' or 'movie' -> pass as is
   const titleTypeValue = titleType === 'all' || titleType === undefined ? undefined : titleType;
-  
-  const { 
-    movies, 
-    loading, 
+
+  const {
+    movies,
+    loading,
     adding,
     setAdding,
     pagination,
     ratingsMap,
-    updateMovie, 
-    deleteMovie, 
+    updateMovie,
+    deleteMovie,
     refreshMovies,
     changePage,
     changePageSize,
@@ -59,16 +50,21 @@ const Index = () => {
     ascending,
     setAscending,
   } = useMovies(watchedFilterValue, titleTypeValue);
-  
+
+  const { groups, loading: loadingGroups, hasNoGroups, refreshGroups } = useGroups();
+  const groupData = useMemo(
+    () => groups.find((g) => g.id === getGroupId()) ?? groups[0] ?? null,
+    [groups]
+  );
+
   // Load orderBy and ascending from localStorage on mount (only once)
   useEffect(() => {
-    const stored = loadFiltersFromStorage();
-    if (stored) {
-      if (stored.orderBy !== undefined) {
-        setOrderBy(stored.orderBy);
+    if (initialFilters) {
+      if (initialFilters.orderBy !== undefined) {
+        setOrderBy(initialFilters.orderBy);
       }
-      if (stored.ascending !== undefined) {
-        setAscending(stored.ascending);
+      if (initialFilters.ascending !== undefined) {
+        setAscending(initialFilters.ascending);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,7 +74,7 @@ const Index = () => {
     setTitleType(newTitleType);
   };
   const { users, getUserNameById } = useUsers();
-  
+
   const getRatingForUser = useCallback((titleId: string, userId: string) => {
     const list = ratingsMap[titleId] || [];
     const r = list.find(x => x.userId === userId);
@@ -86,127 +82,36 @@ const Index = () => {
   }, [ratingsMap]);
 
   useEffect(() => {
-    // Fetch all user groups and current group information
-    const loadGroups = async () => {
-      setLoadingGroups(true);
-      setHasNoGroups(false);
-      
-      try {
-        const userId = getUserId();
-        if (!userId) {
-          navigate('/login', { replace: true });
-          return;
-        }
+    const userId = getUserId();
+    if (!userId) {
+      navigate('/login', { replace: true });
+      return;
+    }
+    // Auto-select first group if none selected
+    if (!getGroupId() && groups.length > 0) {
+      saveGroupId(groups[0].id);
+      refreshMovies();
+    }
+  }, [navigate, groups, refreshMovies]);
 
-        // Fetch user to get all group IDs
-        const user = await fetchUserById(userId);
-        if (!user.groups || user.groups.length === 0) {
-          setHasNoGroups(true);
-          setAllGroups([]);
-          setGroupData(null);
-          setLoadingGroups(false);
-          return;
-        }
-
-        // Fetch details for all groups
-        const groupPromises = user.groups.map((gId) => fetchGroupById(gId));
-        const fetchedGroups = await Promise.all(groupPromises);
-        setAllGroups(fetchedGroups);
-
-        // Check if we have a selected group
-        let groupId = getGroupId();
-        
-        // If no group selected, auto-select the first group
-        if (!groupId && fetchedGroups.length > 0) {
-          groupId = fetchedGroups[0].id;
-          saveGroupId(groupId);
-        }
-
-        // Set current group data
-        if (groupId) {
-          const currentGroup = fetchedGroups.find((g) => g.id === groupId);
-          if (currentGroup) {
-            setGroupData(currentGroup);
-          } else {
-            // If current group not found, use first group
-            if (fetchedGroups.length > 0) {
-              saveGroupId(fetchedGroups[0].id);
-              setGroupData(fetchedGroups[0]);
-              refreshMovies();
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error loading groups:', error);
-        setHasNoGroups(true);
-      } finally {
-        setLoadingGroups(false);
-      }
-    };
-
-    loadGroups();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate]);
-
-  const refreshRatingsForTitle = useCallback(async (titleId: string) => {
-    // Refresh movies to get updated ratings
+  const refreshRatingsForTitle = useCallback(async (_titleId: string) => {
     await refreshMovies();
   }, [refreshMovies]);
 
   const handleGroupChange = async (newGroupId: string) => {
-    try {
-      saveGroupId(newGroupId);
-      const newGroup = allGroups.find((g) => g.id === newGroupId);
-      if (newGroup) {
-        setGroupData(newGroup);
-        await refreshMovies();
-      }
-    } catch (error) {
-      console.error('Error changing group:', error);
-    }
+    saveGroupId(newGroupId);
+    await refreshMovies();
   };
 
   const handleGroupCreated = async () => {
-    // Refresh groups list
-    try {
-      setLoadingGroups(true);
-      setHasNoGroups(false);
-      
-      const userId = getUserId();
-      if (!userId) {
-        navigate('/login', { replace: true });
-        return;
-      }
-
-      // Fetch user to get all group IDs
-      const user = await fetchUserById(userId);
-      if (!user.groups || user.groups.length === 0) {
-        setHasNoGroups(true);
-        setAllGroups([]);
-        setGroupData(null);
-        setLoadingGroups(false);
-        return;
-      }
-
-      // Fetch details for all groups
-      const groupPromises = user.groups.map((gId) => fetchGroupById(gId));
-      const fetchedGroups = await Promise.all(groupPromises);
-      setAllGroups(fetchedGroups);
-
-      // Auto-select the newly created group (should be the last one)
-      if (fetchedGroups.length > 0) {
-        const newGroup = fetchedGroups[fetchedGroups.length - 1];
-        saveGroupId(newGroup.id);
-        setGroupData(newGroup);
-        await refreshMovies();
-      }
-    } catch (error) {
-      console.error('Error refreshing groups:', error);
-      setHasNoGroups(true);
-    } finally {
-      setLoadingGroups(false);
-    }
+    await refreshGroups();
   };
+
+  // Memoize existingTitleIds to prevent unnecessary re-renders of AddMovieForm
+  const existingTitleIds = useMemo(
+    () => movies.map((m) => m.imdbId || m.id),
+    [movies]
+  );
 
   // Show empty state if user has no groups
   if (hasNoGroups && !loadingGroups) {
@@ -245,7 +150,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-hero">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-8 space-y-8">
         {loadingGroups ? (
           <div className="flex items-center justify-center py-12">
@@ -257,9 +162,9 @@ const Index = () => {
               onRefresh={refreshMovies}
               loading={adding}
               setLoading={setAdding}
-              existingTitleIds={movies.map((m) => m.imdbId || m.id)}
+              existingTitleIds={existingTitleIds}
             />
-            
+
             <FilterControls
               watchedFilter={watchedFilter}
               onWatchedFilterChange={setWatchedFilter}
@@ -269,24 +174,15 @@ const Index = () => {
               onAscendingChange={setAscending}
               titleType={titleType}
               onTitleTypeChange={handleTitleTypeChange}
-              groups={allGroups}
+              groups={groups}
               currentGroupId={getGroupId()}
               onGroupChange={handleGroupChange}
             />
-            
-            {loading && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-                <div className="flex flex-col items-center gap-4">
-                  <Loader2 className="w-12 h-12 animate-spin text-movie-blue" />
-                  <p className="text-lg font-medium text-foreground">Loading movies...</p>
-                </div>
-              </div>
-            )}
-            
-            <MovieGrid 
-              movies={movies} 
-              onUpdate={updateMovie} 
-              onDelete={deleteMovie} 
+
+            <MovieGrid
+              movies={movies}
+              onUpdate={updateMovie}
+              onDelete={deleteMovie}
               onRefreshMovies={refreshMovies}
               users={users}
               getUserNameById={getUserNameById}
