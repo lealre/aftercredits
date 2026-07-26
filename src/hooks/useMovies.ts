@@ -4,13 +4,18 @@ import { Movie, PaginationParams, Rating } from "@/types/movie";
 import { fetchMovies } from "@/services/backendService";
 import { getGroupId } from "@/services/authService";
 
-export const useMovies = (watchedFilter?: boolean, titleType?: 'serie' | 'movie') => {
+export const useMovies = (
+  watchedFilter?: boolean,
+  titleType?: 'serie' | 'movie',
+  initialOrderBy?: string,
+  initialAscending?: boolean,
+) => {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(20);
-  const [orderBy, setOrderBy] = useState<string | undefined>(undefined);
-  const [ascending, setAscending] = useState<boolean>(true);
+  const [orderBy, setOrderBy] = useState<string | undefined>(initialOrderBy);
+  const [ascending, setAscending] = useState<boolean>(initialAscending ?? true);
 
   const groupId = getGroupId();
 
