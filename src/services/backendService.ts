@@ -674,6 +674,23 @@ export const deleteCommentSeason = async (
 };
 
 // User endpoints
+export const fetchMe = async (): Promise<UserResponse> => {
+  try {
+    const response = await authFetch(`${API_BASE_URL}/users/me`);
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json();
+      const message = errorData.errorMessage || "Failed to fetch user";
+      console.log("Error fetching current user:", errorData);
+      throw new Error(message);
+    }
+    const user: UserResponse = await response.json();
+    return user;
+  } catch (error) {
+    console.error("Error fetching current user:", error);
+    throw error;
+  }
+};
+
 export const fetchUserById = async (userId: string): Promise<UserResponse> => {
   try {
     const response = await authFetch(`${API_BASE_URL}/users/${userId}`);
