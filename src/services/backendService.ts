@@ -704,25 +704,6 @@ export const fetchMe = async (): Promise<UserResponse> => {
   }
 };
 
-export const fetchUserById = async (userId: string): Promise<UserResponse> => {
-  try {
-    const response = await authFetch(`${API_BASE_URL}/users/${userId}`);
-
-    if (!response.ok) {
-      const errorData: ErrorResponse = await response.json();
-      const message = errorData.errorMessage || "Failed to fetch user";
-      console.log("Error fetching user:", errorData);
-      throw new Error(message);
-    }
-
-    const user: UserResponse = await response.json();
-    return user;
-  } catch (error) {
-    console.error("Error fetching user:", error);
-    throw error;
-  }
-};
-
 // Group management endpoints
 export interface Group {
   id: string;

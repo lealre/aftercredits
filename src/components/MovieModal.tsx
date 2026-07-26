@@ -60,7 +60,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const isTVSeries = movie.type === 'tvSeries' || movie.type === 'tvMiniSeries';
 
   // Episodes are fetched on demand (backend omits them from the list payload)
-  const { data: episodes = [], isLoading: episodesLoading } = useEpisodes(movie.imdbId, isOpen && isTVSeries);
+  const { data: episodes = [], isLoading: episodesLoading, isError: episodesError } = useEpisodes(movie.imdbId, isOpen && isTVSeries);
 
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
   // Initialize watched state directly from movie prop - update only when modal opens with new movie
@@ -604,7 +604,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                   return (
                     selectedSeasonData && (
                       <div className="text-sm text-muted-foreground">
-                        {selectedSeasonData.episodeCount} episodes{dateText && ` • ${isFuture ? 'Releases at' : 'Released'} ${dateText}`}{episodesLoading && !dateText && ' • …'}
+                        {selectedSeasonData.episodeCount} episodes
+                        {episodesError
+                          ? ' • Couldn\'t load episode details'
+                          : dateText && ` • ${isFuture ? 'Releases at' : 'Released'} ${dateText}`}
+                        {!episodesError && episodesLoading && !dateText && ' • …'}
                       </div>
                     )
                   );
