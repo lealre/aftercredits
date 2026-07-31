@@ -288,9 +288,9 @@ const Groups = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => setMembersTarget({ id: group.id, name: group.name, ownerId: group.ownerId })}
-                            className="h-auto px-2 py-0.5 text-xs font-medium text-foreground hover:bg-movie-blue/10"
+                            className="h-auto gap-1 rounded-full border border-movie-blue/40 bg-movie-blue/10 px-2.5 py-0.5 text-xs font-medium text-movie-blue hover:bg-movie-blue/20 hover:text-movie-blue"
                           >
-                            <Users className="mr-1 h-3 w-3" />
+                            <Users className="h-3 w-3" />
                             {group.users?.length || 0} member{(group.users?.length || 0) !== 1 ? 's' : ''}
                           </Button>
                         </div>
