@@ -10,15 +10,25 @@ import {
   getGroupId,
   clearGroupId,
 } from "@/services/authService";
-import { deleteGroup } from "@/services/backendService";
+import { deleteGroup, leaveGroup } from "@/services/backendService";
 import { GroupResponse } from "@/types/movie";
-import { Users, Check, Plus, Edit, Trash2, UserPlus, Loader2, Crown } from "lucide-react";
+import { Users, Check, Plus, Edit, Trash2, UserPlus, Loader2, Crown, LogOut } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CreateGroupModal } from "@/components/CreateGroupModal";
 import { RenameGroupModal } from "@/components/RenameGroupModal";
 import { ConfirmByTypingModal } from "@/components/ConfirmByTypingModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useGroups } from "@/hooks/useGroups";
 
 const Groups = () => {
@@ -29,6 +39,8 @@ const Groups = () => {
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [isLeaving, setIsLeaving] = useState(false);
   const { groups, loading: loadingGroups, hasNoGroups, refreshGroups } = useGroups();
 
   const token = getToken();
@@ -123,11 +135,48 @@ const Groups = () => {
     }
   };
 
-  const handleInviteToGroup = (_groupId: string) => {
-    toast({
-      title: "Coming soon",
-      description: "Inviting members will be available soon.",
-    });
+  const handleLeaveGroup = (groupId: string) => {
+    const group = groups.find((g: GroupResponse) => g.id === groupId);
+    if (!group) return;
+    setLeaveTarget({ id: group.id, name: group.name });
+  };
+
+  const handleConfirmLeaveGroup = async () => {
+    if (!leaveTarget || !userId) return;
+    const leftId = leaveTarget.id;
+    setIsLeaving(true);
+    try {
+      await leaveGroup(leftId, userId);
+
+      if (getGroupId() === leftId) {
+        const remaining = groups.filter((g: GroupResponse) => g.id !== leftId);
+        if (remaining.length > 0) {
+          saveGroupId(remaining[0].id);
+          setActiveGroupId(remaining[0].id);
+        } else {
+          clearGroupId();
+          setActiveGroupId(null);
+        }
+      }
+
+      await refreshGroups();
+
+      toast({
+        title: "Left group",
+        description: `You have left "${leaveTarget.name}".`,
+      });
+
+      setLeaveTarget(null);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error leaving group";
+      toast({
+        title: "Failed to leave group",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLeaving(false);
+    }
   };
 
   if (!token || !userId) {
@@ -267,24 +316,35 @@ const Groups = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleInviteToGroup(group.id)}
                             className="text-xs"
-                            disabled={!isOwner}
+                            disabled
+                            title="Coming soon"
                           >
                             <UserPlus className="mr-1 h-3 w-3" />
                             Invite
                           </Button>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteGroup(group.id)}
-                          className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                          disabled={!isOwner}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {isOwner ? "Delete Group" : "Leave Group"}
-                        </Button>
+                        {isOwner ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteGroup(group.id)}
+                            className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Group
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleLeaveGroup(group.id)}
+                            className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <LogOut className="mr-2 h-4 w-4" />
+                            Leave Group
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -307,7 +367,6 @@ const Groups = () => {
                   shown in your watchlist.
                 </p>
                 <p>• You can switch between groups at any time.</p>
-                <p>• Group management features (create, edit, delete, invite) are coming soon.</p>
               </CardContent>
             </Card>
           )}
@@ -343,6 +402,33 @@ const Groups = () => {
           loading={isDeleting}
         />
       )}
+      <AlertDialog
+        open={!!leaveTarget}
+        onOpenChange={(open) => {
+          if (!open) setLeaveTarget(null);
+        }}
+      >
+        <AlertDialogContent className="bg-movie-surface border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave group</AlertDialogTitle>
+            <AlertDialogDescription>
+              {leaveTarget
+                ? `Are you sure you want to leave "${leaveTarget.name}"? You will need to be invited again to rejoin.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLeaving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmLeaveGroup}
+              disabled={isLeaving}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isLeaving ? "Leaving..." : "Leave group"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
