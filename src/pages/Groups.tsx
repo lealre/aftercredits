@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CreateGroupModal } from "@/components/CreateGroupModal";
 import { RenameGroupModal } from "@/components/RenameGroupModal";
+import { GroupMembersModal } from "@/components/GroupMembersModal";
 import { ConfirmByTypingModal } from "@/components/ConfirmByTypingModal";
 import {
   AlertDialog,
@@ -37,6 +38,7 @@ const Groups = () => {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(getGroupId());
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string; description: string } | null>(null);
+  const [membersTarget, setMembersTarget] = useState<{ id: string; name: string; ownerId: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [leaveTarget, setLeaveTarget] = useState<{ id: string; name: string } | null>(null);
@@ -282,7 +284,15 @@ const Groups = () => {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <p className="text-xs text-muted-foreground">Members</p>
-                          <p className="text-xs font-medium text-foreground">{group.users?.length || 0} member{(group.users?.length || 0) !== 1 ? 's' : ''}</p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setMembersTarget({ id: group.id, name: group.name, ownerId: group.ownerId })}
+                            className="h-auto px-2 py-0.5 text-xs font-medium text-foreground hover:bg-movie-blue/10"
+                          >
+                            <Users className="mr-1 h-3 w-3" />
+                            {group.users?.length || 0} member{(group.users?.length || 0) !== 1 ? 's' : ''}
+                          </Button>
                         </div>
                         <p className="text-xs text-muted-foreground">Status</p>
                         <p className="text-sm text-foreground">
@@ -389,6 +399,17 @@ const Groups = () => {
           currentName={renameTarget.name}
           currentDescription={renameTarget.description}
           onSuccess={handleGroupRenamed}
+        />
+      )}
+      {membersTarget && (
+        <GroupMembersModal
+          open={!!membersTarget}
+          onOpenChange={(open) => {
+            if (!open) setMembersTarget(null);
+          }}
+          groupId={membersTarget.id}
+          groupName={membersTarget.name}
+          ownerId={membersTarget.ownerId}
         />
       )}
       {deleteTarget && (
