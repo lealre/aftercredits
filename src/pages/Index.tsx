@@ -114,23 +114,22 @@ const Index = () => {
                 You don't have any groups yet. Create a group to start managing your watchlist.
               </CardDescription>
             </CardHeader>
-            <CardContent className="pt-4 space-y-2">
+            <CardContent className="pt-4">
               <Button
                 onClick={() => setIsCreateModalOpen(true)}
                 className="w-full bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue/90"
               >
                 Create Group
               </Button>
-              <Button
-                onClick={() => navigate('/groups')}
-                variant="outline"
-                className="w-full"
-              >
-                Go to Groups
-              </Button>
             </CardContent>
           </Card>
         </main>
+
+        <CreateGroupModal
+          open={isCreateModalOpen}
+          onOpenChange={setIsCreateModalOpen}
+          onSuccess={handleGroupCreated}
+        />
       </div>
     );
   }
