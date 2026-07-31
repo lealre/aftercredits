@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ import {
 
 const Login = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
@@ -64,6 +66,9 @@ const Login = () => {
         password,
       });
       saveLoginData(data);
+      // Drop any cached data from a previous session so this account never sees
+      // the prior user's cached identity/groups/movies.
+      queryClient.clear();
       const firstGroup = data.groups?.[0];
       if (firstGroup) {
         // Auto-select the first group

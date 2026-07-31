@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import {
 
 const SignUp = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -68,6 +70,9 @@ const SignUp = () => {
       });
       
       saveLoginData(loginData);
+      // Drop any cached data from a previous session so the new account never
+      // sees the prior user's cached identity/groups/movies.
+      queryClient.clear();
       const firstGroup = loginData.groups?.[0];
       
       if (firstGroup) {
