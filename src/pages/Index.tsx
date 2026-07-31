@@ -50,26 +50,13 @@ const Index = () => {
     setOrderBy,
     ascending,
     setAscending,
-  } = useMovies(watchedFilterValue, titleTypeValue);
+  } = useMovies(watchedFilterValue, titleTypeValue, initialFilters?.orderBy, initialFilters?.ascending);
 
   const { groups, loading: loadingGroups, hasNoGroups, refreshGroups } = useGroups();
   const groupData = useMemo(
     () => groups.find((g) => g.id === getGroupId()) ?? groups[0] ?? null,
     [groups]
   );
-
-  // Load orderBy and ascending from localStorage on mount (only once)
-  useEffect(() => {
-    if (initialFilters) {
-      if (initialFilters.orderBy !== undefined) {
-        setOrderBy(initialFilters.orderBy);
-      }
-      if (initialFilters.ascending !== undefined) {
-        setAscending(initialFilters.ascending);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount
 
   const handleTitleTypeChange = (newTitleType: 'all' | 'serie' | 'movie' | undefined) => {
     setTitleType(newTitleType);

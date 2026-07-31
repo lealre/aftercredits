@@ -10,6 +10,7 @@ import {
   UserResponse,
   GroupResponse,
   SearchTitle,
+  Episode,
 } from "@/types/movie";
 import {
   getToken,
@@ -142,6 +143,29 @@ const authFetch = async (url: string, options: RequestInit = {}) => {
   return response;
 };
 
+const mapBackendEpisode = (ep: BackendEpisode): Episode => ({
+  id: ep.id,
+  title: ep.title,
+  season: ep.season,
+  episodeNumber: ep.episodeNumber,
+  primaryImage: ep.primaryImage ? {
+    url: ep.primaryImage.url,
+    width: ep.primaryImage.width,
+    height: ep.primaryImage.height,
+  } : undefined,
+  runtimeSeconds: ep.runtimeSeconds,
+  plot: ep.plot,
+  rating: ep.rating ? {
+    aggregateRating: ep.rating.aggregateRating,
+    voteCount: ep.rating.voteCount,
+  } : undefined,
+  releaseDate: ep.releaseDate ? {
+    year: ep.releaseDate.year,
+    month: ep.releaseDate.month,
+    day: ep.releaseDate.day,
+  } : undefined,
+});
+
 const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
   return {
     id: backendMovie.id,
@@ -161,28 +185,7 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
     watchedAt: backendMovie.watchedAt,
     seasons: backendMovie.seasons,
     seasonsWatched: backendMovie.seasonsWatched,
-    episodes: backendMovie.episodes?.map(ep => ({
-      id: ep.id,
-      title: ep.title,
-      season: ep.season,
-      episodeNumber: ep.episodeNumber,
-      primaryImage: ep.primaryImage ? {
-        url: ep.primaryImage.url,
-        width: ep.primaryImage.width,
-        height: ep.primaryImage.height,
-      } : undefined,
-      runtimeSeconds: ep.runtimeSeconds,
-      plot: ep.plot,
-      rating: ep.rating ? {
-        aggregateRating: ep.rating.aggregateRating,
-        voteCount: ep.rating.voteCount,
-      } : undefined,
-      releaseDate: ep.releaseDate ? {
-        year: ep.releaseDate.year,
-        month: ep.releaseDate.month,
-        day: ep.releaseDate.day,
-      } : undefined,
-    })),
+    episodes: backendMovie.episodes?.map(mapBackendEpisode),
   };
 };
 
@@ -296,6 +299,16 @@ export const searchTitles = async (
     throw new Error(message);
   }
   return response.json();
+};
+
+export const fetchEpisodes = async (titleId: string): Promise<Episode[]> => {
+  const response = await authFetch(`${API_BASE_URL}/titles/${titleId}/episodes`);
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json();
+    throw new Error(errorData.errorMessage || "Failed to fetch episodes");
+  }
+  const data: { episodes?: BackendEpisode[] } = await response.json();
+  return (data.episodes ?? []).map(mapBackendEpisode);
 };
 
 export const fetchUsers = async (groupId: string): Promise<User[]> => {
@@ -674,21 +687,19 @@ export const deleteCommentSeason = async (
 };
 
 // User endpoints
-export const fetchUserById = async (userId: string): Promise<UserResponse> => {
+export const fetchMe = async (): Promise<UserResponse> => {
   try {
-    const response = await authFetch(`${API_BASE_URL}/users/${userId}`);
-
+    const response = await authFetch(`${API_BASE_URL}/users/me`);
     if (!response.ok) {
       const errorData: ErrorResponse = await response.json();
       const message = errorData.errorMessage || "Failed to fetch user";
-      console.log("Error fetching user:", errorData);
+      console.log("Error fetching current user:", errorData);
       throw new Error(message);
     }
-
     const user: UserResponse = await response.json();
     return user;
   } catch (error) {
-    console.error("Error fetching user:", error);
+    console.error("Error fetching current user:", error);
     throw error;
   }
 };

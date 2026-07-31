@@ -36,6 +36,7 @@ import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { CommentsSection } from './modal/CommentsSection';
 import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, deleteRating, deleteRatingSeason as deleteRatingSeasonService } from '@/services/backendService';
 import { getGroupId, getUserId } from '@/services/authService';
+import { useEpisodes } from '@/hooks/useEpisodes';
 
 interface MovieModalProps {
   movie: Movie;
@@ -57,7 +58,10 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   
   // Check if this is a TV series - must be declared before useEffects that use it
   const isTVSeries = movie.type === 'tvSeries' || movie.type === 'tvMiniSeries';
-  
+
+  // Episodes are fetched on demand (backend omits them from the list payload)
+  const { data: episodes = [], isLoading: episodesLoading, isError: episodesError } = useEpisodes(movie.imdbId, isOpen && isTVSeries);
+
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
   // Initialize watched state directly from movie prop - update only when modal opens with new movie
   const [watched, setWatched] = useState(() => movie.watched || false);
@@ -495,8 +499,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                   {(() => {
                     // For TV series, try to get the first episode image of the selected season
                     let imageSrc = movie.poster;
-                    if (isTVSeries && selectedSeason && movie.episodes) {
-                      const seasonEpisodes = movie.episodes.filter(ep => ep.season === selectedSeason);
+                    if (isTVSeries && selectedSeason && episodes.length > 0) {
+                      const seasonEpisodes = episodes.filter(ep => ep.season === selectedSeason);
                       const firstEpisode = seasonEpisodes.find(ep => ep.episodeNumber === 1) || seasonEpisodes[0];
                       if (firstEpisode?.primaryImage?.url) {
                         imageSrc = firstEpisode.primaryImage.url;
@@ -583,7 +587,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 {selectedSeason && (() => {
                   const selectedSeasonData = movie.seasons?.find(s => s.season === selectedSeason);
                   // Find the first episode of the selected season (episodeNumber === 1 or first in array)
-                  const seasonEpisodes = movie.episodes?.filter(ep => ep.season === selectedSeason) || [];
+                  const seasonEpisodes = episodes.filter(ep => ep.season === selectedSeason);
                   const firstEpisode = seasonEpisodes.find(ep => ep.episodeNumber === 1) || seasonEpisodes[0];
                   const releaseDate = firstEpisode?.releaseDate 
                     ? new Date(firstEpisode.releaseDate.year, firstEpisode.releaseDate.month - 1, firstEpisode.releaseDate.day)
@@ -600,7 +604,11 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                   return (
                     selectedSeasonData && (
                       <div className="text-sm text-muted-foreground">
-                        {selectedSeasonData.episodeCount} episodes{dateText && ` • ${isFuture ? 'Releases at' : 'Released'} ${dateText}`}
+                        {selectedSeasonData.episodeCount} episodes
+                        {episodesError
+                          ? ' • Couldn\'t load episode details'
+                          : dateText && ` • ${isFuture ? 'Releases at' : 'Released'} ${dateText}`}
+                        {!episodesError && episodesLoading && !dateText && ' • …'}
                       </div>
                     )
                   );
