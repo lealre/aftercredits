@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,24 +12,41 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { createGroup } from '@/services/backendService';
+import { updateGroup } from '@/services/backendService';
 import { Loader2 } from 'lucide-react';
 
-interface CreateGroupModalProps {
+interface RenameGroupModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  groupId: string;
+  currentName: string;
+  currentDescription?: string;
   onSuccess?: () => void;
 }
 
-export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupModalProps) => {
-  const [groupName, setGroupName] = useState('');
-  const [description, setDescription] = useState('');
+export const RenameGroupModal = ({
+  open,
+  onOpenChange,
+  groupId,
+  currentName,
+  currentDescription = '',
+  onSuccess,
+}: RenameGroupModalProps) => {
+  const [groupName, setGroupName] = useState(currentName);
+  const [description, setDescription] = useState(currentDescription);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
+  useEffect(() => {
+    if (open) {
+      setGroupName(currentName);
+      setDescription(currentDescription);
+    }
+  }, [open, currentName, currentDescription]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const trimmedName = groupName.trim();
     if (!trimmedName) {
       toast({
@@ -42,31 +59,27 @@ export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupM
 
     setIsSubmitting(true);
     try {
-      await createGroup({ name: trimmedName, description: description.trim() });
+      await updateGroup(groupId, { name: trimmedName, description: description.trim() });
 
       toast({
-        title: "Group created successfully",
-        description: `"${trimmedName}" has been created.`,
+        title: "Group updated successfully",
+        description: `Changes to "${trimmedName}" have been saved.`,
       });
 
-      // Reset form and close modal
-      setGroupName('');
-      setDescription('');
       onOpenChange(false);
-      
-      // Call success callback if provided
+
       if (onSuccess) {
         onSuccess();
       }
     } catch (error) {
-      let errorMessage = "Error creating group";
-      
+      let errorMessage = "Error renaming group";
+
       if (error instanceof Error) {
         errorMessage = error.message;
       }
-      
+
       toast({
-        title: "Failed to create group",
+        title: "Failed to rename group",
         description: errorMessage,
         variant: "destructive",
       });
@@ -76,8 +89,8 @@ export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupM
   };
 
   const handleCancel = () => {
-    setGroupName('');
-    setDescription('');
+    setGroupName(currentName);
+    setDescription(currentDescription);
     onOpenChange(false);
   };
 
@@ -85,17 +98,17 @@ export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupM
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Create New Group</DialogTitle>
+          <DialogTitle>Edit Group</DialogTitle>
           <DialogDescription>
-            Enter a name for your new group. You can change this later.
+            Update this group's name and description.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="group-name">Group Name</Label>
+              <Label htmlFor="rename-group-name">Group Name</Label>
               <Input
-                id="group-name"
+                id="rename-group-name"
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="My Watchlist Group"
@@ -105,9 +118,9 @@ export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupM
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="group-description">Description <span className="text-muted-foreground">(optional)</span></Label>
+              <Label htmlFor="rename-group-description">Description <span className="text-muted-foreground">(optional)</span></Label>
               <Textarea
-                id="group-description"
+                id="rename-group-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What's this group for?"
@@ -134,10 +147,10 @@ export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupM
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
+                  Renaming...
                 </>
               ) : (
-                'Create Group'
+                'Save Changes'
               )}
             </Button>
           </DialogFooter>

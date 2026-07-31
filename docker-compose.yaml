@@ -24,7 +24,7 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-    command: ["sh", "-c", "set -e && echo 'Running database setup...' && /app/database -indexes -reset && echo 'Running superuser setup...' && /app/database -superuser"]
+    command: ["sh", "-c", "set -e && echo 'Backfilling group soft-delete field...' && /app/database -backfill-groups && echo 'Running database setup...' && /app/database -indexes -reset && echo 'Running superuser setup...' && /app/database -superuser"]
     restart: "no"
 
   backend:

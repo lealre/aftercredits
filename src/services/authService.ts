@@ -88,8 +88,12 @@ export const login = async (payload: LoginRequest): Promise<LoginSuccess> => {
 export const saveLoginData = (data: LoginSuccess) => {
   localStorage.setItem(TOKEN_KEY, data.accessToken);
   localStorage.setItem(USER_ID_KEY, data.id);
+  // Reset the active-group pointer for the new session: a user without groups
+  // must not inherit the previous account's group_id.
   if (data.groups?.length) {
     localStorage.setItem(GROUP_ID_KEY, data.groups[0]);
+  } else {
+    localStorage.removeItem(GROUP_ID_KEY);
   }
 };
 

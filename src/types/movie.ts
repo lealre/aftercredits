@@ -142,6 +142,7 @@ export interface UserResponse {
 export interface GroupResponse {
   id: string;
   name: string;
+  description?: string;
   ownerId: string;
   users: string[];
   titles: any[];

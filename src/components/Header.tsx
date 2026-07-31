@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import { useQueryClient } from '@tanstack/react-query';
 import { getToken, clearToken } from '@/services/authService';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useToast } from '@/hooks/use-toast';
@@ -19,11 +20,14 @@ export const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: userData, isLoading: loadingUser } = useCurrentUser();
   const token = getToken();
 
   const handleLogout = () => {
     clearToken();
+    // Wipe cached session data so the next account starts clean.
+    queryClient.clear();
     toast({
       title: "Logged out",
       description: "You have been logged out successfully.",
