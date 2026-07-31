@@ -8,7 +8,9 @@ import {
   getToken,
   saveGroupId,
   getGroupId,
+  clearGroupId,
 } from "@/services/authService";
+import { deleteGroup } from "@/services/backendService";
 import { GroupResponse } from "@/types/movie";
 import { Users, Check, Plus, Edit, Trash2, UserPlus, Loader2, Crown } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CreateGroupModal } from "@/components/CreateGroupModal";
 import { RenameGroupModal } from "@/components/RenameGroupModal";
+import { ConfirmByTypingModal } from "@/components/ConfirmByTypingModal";
 import { useGroups } from "@/hooks/useGroups";
 
 const Groups = () => {
@@ -24,6 +27,8 @@ const Groups = () => {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(getGroupId());
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { groups, loading: loadingGroups, hasNoGroups, refreshGroups } = useGroups();
 
   const token = getToken();
@@ -74,11 +79,48 @@ const Groups = () => {
     await refreshGroups();
   };
 
-  const handleDeleteGroup = (_groupId: string) => {
-    toast({
-      title: "Coming soon",
-      description: "Group deletion will be available soon.",
-    });
+  const handleDeleteGroup = (groupId: string) => {
+    const group = groups.find((g: GroupResponse) => g.id === groupId);
+    if (!group) return;
+    setDeleteTarget({ id: group.id, name: group.name });
+  };
+
+  const handleConfirmDeleteGroup = async () => {
+    if (!deleteTarget) return;
+    const deletedId = deleteTarget.id;
+    setIsDeleting(true);
+    try {
+      await deleteGroup(deletedId);
+
+      if (getGroupId() === deletedId) {
+        const remaining = groups.filter((g: GroupResponse) => g.id !== deletedId);
+        if (remaining.length > 0) {
+          saveGroupId(remaining[0].id);
+          setActiveGroupId(remaining[0].id);
+        } else {
+          clearGroupId();
+          setActiveGroupId(null);
+        }
+      }
+
+      await refreshGroups();
+
+      toast({
+        title: "Group deleted",
+        description: `"${deleteTarget.name}" has been deleted.`,
+      });
+
+      setDeleteTarget(null);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error deleting group";
+      toast({
+        title: "Failed to delete group",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleInviteToGroup = (_groupId: string) => {
@@ -285,6 +327,20 @@ const Groups = () => {
           groupId={renameTarget.id}
           currentName={renameTarget.name}
           onSuccess={handleGroupRenamed}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmByTypingModal
+          open={!!deleteTarget}
+          onOpenChange={(open) => {
+            if (!open) setDeleteTarget(null);
+          }}
+          title="Delete group"
+          description="This will permanently delete this group and cannot be undone."
+          confirmPhrase={deleteTarget.name}
+          confirmLabel="Delete group"
+          onConfirm={handleConfirmDeleteGroup}
+          loading={isDeleting}
         />
       )}
     </div>
