@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { createGroup } from '@/services/backendService';
 import { Loader2 } from 'lucide-react';
@@ -22,6 +23,7 @@ interface CreateGroupModalProps {
 
 export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupModalProps) => {
   const [groupName, setGroupName] = useState('');
+  const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
@@ -40,15 +42,16 @@ export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupM
 
     setIsSubmitting(true);
     try {
-      await createGroup({ name: trimmedName });
-      
+      await createGroup({ name: trimmedName, description: description.trim() });
+
       toast({
         title: "Group created successfully",
         description: `"${trimmedName}" has been created.`,
       });
-      
+
       // Reset form and close modal
       setGroupName('');
+      setDescription('');
       onOpenChange(false);
       
       // Call success callback if provided
@@ -74,6 +77,7 @@ export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupM
 
   const handleCancel = () => {
     setGroupName('');
+    setDescription('');
     onOpenChange(false);
   };
 
@@ -98,6 +102,18 @@ export const CreateGroupModal = ({ open, onOpenChange, onSuccess }: CreateGroupM
                 disabled={isSubmitting}
                 autoFocus
                 required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="group-description">Description <span className="text-muted-foreground">(optional)</span></Label>
+              <Textarea
+                id="group-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What's this group for?"
+                disabled={isSubmitting}
+                maxLength={300}
+                rows={3}
               />
             </div>
           </div>

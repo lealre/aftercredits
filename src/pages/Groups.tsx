@@ -36,7 +36,7 @@ const Groups = () => {
   const { toast } = useToast();
   const [activeGroupId, setActiveGroupId] = useState<string | null>(getGroupId());
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string; description: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [leaveTarget, setLeaveTarget] = useState<{ id: string; name: string } | null>(null);
@@ -84,7 +84,7 @@ const Groups = () => {
   const handleEditGroup = (groupId: string) => {
     const group = groups.find((g: GroupResponse) => g.id === groupId);
     if (!group) return;
-    setRenameTarget({ id: group.id, name: group.name });
+    setRenameTarget({ id: group.id, name: group.name, description: group.description ?? '' });
   };
 
   const handleGroupRenamed = async () => {
@@ -270,9 +270,11 @@ const Groups = () => {
                               </Badge>
                             )}
                           </CardTitle>
-                          <CardDescription className="mt-1 truncate" title={group.id}>
-                            ID: {group.id}
-                          </CardDescription>
+                          {group.description && (
+                            <CardDescription className="mt-1 truncate" title={group.description}>
+                              {group.description}
+                            </CardDescription>
+                          )}
                         </div>
                       </div>
                     </CardHeader>
@@ -385,6 +387,7 @@ const Groups = () => {
           }}
           groupId={renameTarget.id}
           currentName={renameTarget.name}
+          currentDescription={renameTarget.description}
           onSuccess={handleGroupRenamed}
         />
       )}
