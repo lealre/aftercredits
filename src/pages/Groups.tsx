@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CreateGroupModal } from "@/components/CreateGroupModal";
+import { RenameGroupModal } from "@/components/RenameGroupModal";
 import { useGroups } from "@/hooks/useGroups";
 
 const Groups = () => {
@@ -22,6 +23,7 @@ const Groups = () => {
   const { toast } = useToast();
   const [activeGroupId, setActiveGroupId] = useState<string | null>(getGroupId());
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const { groups, loading: loadingGroups, hasNoGroups, refreshGroups } = useGroups();
 
   const token = getToken();
@@ -62,11 +64,14 @@ const Groups = () => {
     });
   };
 
-  const handleEditGroup = (_groupId: string) => {
-    toast({
-      title: "Coming soon",
-      description: "Group editing will be available soon.",
-    });
+  const handleEditGroup = (groupId: string) => {
+    const group = groups.find((g: GroupResponse) => g.id === groupId);
+    if (!group) return;
+    setRenameTarget({ id: group.id, name: group.name });
+  };
+
+  const handleGroupRenamed = async () => {
+    await refreshGroups();
   };
 
   const handleDeleteGroup = (_groupId: string) => {
@@ -271,6 +276,17 @@ const Groups = () => {
         onOpenChange={setIsCreateModalOpen}
         onSuccess={handleGroupCreated}
       />
+      {renameTarget && (
+        <RenameGroupModal
+          open={!!renameTarget}
+          onOpenChange={(open) => {
+            if (!open) setRenameTarget(null);
+          }}
+          groupId={renameTarget.id}
+          currentName={renameTarget.name}
+          onSuccess={handleGroupRenamed}
+        />
+      )}
     </div>
   );
 };
