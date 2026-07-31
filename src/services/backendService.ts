@@ -819,6 +819,16 @@ export const deleteGroup = async (groupId: string): Promise<void> => {
   }
 };
 
+export const leaveGroup = async (groupId: string, userId: string): Promise<void> => {
+  const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/users/${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json();
+    throw new Error(errorData.errorMessage || "Failed to leave group");
+  }
+};
+
 export const inviteToGroup = async (groupId: string, email: string): Promise<void> => {
   // TODO: Implement when POST /api/groups/{groupId}/invite endpoint is available
   try {
