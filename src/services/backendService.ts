@@ -820,12 +820,25 @@ export const deleteGroup = async (groupId: string): Promise<void> => {
 };
 
 export const leaveGroup = async (groupId: string, userId: string): Promise<void> => {
-  const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/users/${userId}`, {
-    method: "DELETE",
-  });
-  if (!response.ok) {
-    const errorData: ErrorResponse = await response.json();
-    throw new Error(errorData.errorMessage || "Failed to leave group");
+  try {
+    const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/users/${userId}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      let message = "Failed to leave group";
+      try {
+        const errorData: ErrorResponse = await response.json();
+        message = errorData.errorMessage || message;
+        console.log("Error leaving group:", errorData);
+      } catch {
+        // Non-JSON or empty error body; fall back to default message
+      }
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.error("Error leaving group:", error);
+    throw error;
   }
 };
 
