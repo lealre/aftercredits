@@ -1,17 +1,34 @@
+# Full application stack (postgres + backend + frontend).
+#
+# Used both locally and on the Raspberry Pi — the Pi runs entirely from its
+# SSD, so the database lives in a named docker volume rather than a
+# machine-specific bind mount, and no separate Pi compose file is needed.
+#
+#   docker compose up -d
+#
+# db-setup applies the schema migrations and creates the superuser before the
+# backend starts; it exits when done.
+
 services:
-  mongo:
-    image: mongo:7
-    container_name: aftercredits-mongo
+  postgres:
+    image: postgres:16
+    container_name: aftercredits-postgres
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-mongouser}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-mongopass}
+      - POSTGRES_USER=${POSTGRES_USER:-aftercredits}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-aftercredits}
+      - POSTGRES_DB=${POSTGRES_DB:-aftercredits}
+    # Bound to loopback: the app reaches postgres over the compose network,
+    # so the published port is only for local psql/inspection.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT_HOST:-5433}:5432"
     volumes:
-      - mongo_data:/data/db
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "mongosh -u \"$MONGO_INITDB_ROOT_USERNAME\" -p \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand(\"ping\")'"]
+      test: ["CMD-SHELL", "pg_isready -U \"${POSTGRES_USER:-aftercredits}\" -d \"${POSTGRES_DB:-aftercredits}\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -20,20 +37,23 @@ services:
     image: lealre/aftercredits-backend:latest
     container_name: aftercredits-db-setup
     env_file:
-      - .env
+      - path: .env
+        required: false
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
-    command: ["sh", "-c", "set -e && echo 'Backfilling group soft-delete field...' && /app/database -backfill-groups && echo 'Running database setup...' && /app/database -indexes -reset && echo 'Running superuser setup...' && /app/database -superuser"]
+    command: ["sh", "-c", "set -e && echo 'Applying schema migrations...' && /app/database -migrate && echo 'Running superuser setup...' && /app/database -superuser"]
     restart: "no"
 
   backend:
     image: lealre/aftercredits-backend:latest
     container_name: aftercredits-backend
+    restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
       db-setup:
         condition: service_completed_successfully
@@ -45,7 +65,8 @@ services:
       context: .
       dockerfile: Dockerfile
     env_file:
-      - .env
+      - path: .env
+        required: false
     container_name: aftercredits-frontend
     restart: unless-stopped
     depends_on:
@@ -54,5 +75,5 @@ services:
       - "8081:80"
 
 volumes:
-  mongo_data:
-   name: aftercredits-mongo-data
+  postgres_data:
+    name: aftercredits-postgres-data
