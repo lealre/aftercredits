@@ -6,8 +6,11 @@
 #
 #   docker compose up -d
 #
-# db-setup applies the schema migrations and creates the superuser before the
-# backend starts; it exits when done.
+# The backend applies the schema migrations itself at boot, so there is no
+# separate migration step to sequence. Creating the first admin user is a
+# one-off:
+#
+#   docker compose run --rm backend /app/database -superuser
 
 services:
   postgres:
@@ -33,18 +36,6 @@ services:
       timeout: 5s
       retries: 5
 
-  db-setup:
-    image: lealre/aftercredits-backend:latest
-    container_name: aftercredits-db-setup
-    env_file:
-      - path: .env
-        required: false
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: ["sh", "-c", "set -e && echo 'Applying schema migrations...' && /app/database -migrate && echo 'Running superuser setup...' && /app/database -superuser"]
-    restart: "no"
-
   backend:
     image: lealre/aftercredits-backend:latest
     container_name: aftercredits-backend
@@ -55,8 +46,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      db-setup:
-        condition: service_completed_successfully
     ports:
       - "8080:8080"
 
