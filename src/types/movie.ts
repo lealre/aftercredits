@@ -71,6 +71,7 @@ export interface Rating {
   id: string;
   titleId: string;
   userId: string;
+  groupId: string; // ratings are group-scoped: one user can rate the same title once per group
   note: number;
   seasonsRatings?: Record<string, SeasonRating>; // season number -> SeasonRating
   // comments field removed - now in separate endpoint
@@ -90,6 +91,7 @@ export interface Comment {
   id: string;
   titleId: string;
   userId: string;
+  groupId: string; // comments are group-scoped: the same user comments per group on a title
   comment?: string;
   seasonsComments?: Record<string, SeasonComment>; // season number -> SeasonComment
   createdAt: string;
