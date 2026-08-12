@@ -8,7 +8,8 @@ import { AddMovieForm } from '@/components/AddMovieForm';
 import { MovieGrid } from '@/components/MovieGrid';
 import { FilterControls, loadFiltersFromStorage } from '@/components/FilterControls';
 import { Loader2 } from 'lucide-react';
-import { getGroupId, getUserId, saveGroupId } from '@/services/authService';
+import { getUserId, saveGroupId } from '@/services/authService';
+import { useActiveGroupId } from '@/hooks/useActiveGroupId';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CreateGroupModal } from '@/components/CreateGroupModal';
@@ -19,6 +20,7 @@ const initialFilters = loadFiltersFromStorage();
 
 const Index = () => {
   const navigate = useNavigate();
+  const activeGroupId = useActiveGroupId();
 
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>(
     () => (initialFilters?.watchedFilter as 'all' | 'watched' | 'unwatched') || 'all'
@@ -54,8 +56,8 @@ const Index = () => {
 
   const { groups, loading: loadingGroups, hasNoGroups, refreshGroups } = useGroups();
   const groupData = useMemo(
-    () => groups.find((g) => g.id === getGroupId()) ?? groups[0] ?? null,
-    [groups]
+    () => groups.find((g) => g.id === activeGroupId) ?? groups[0] ?? null,
+    [groups, activeGroupId]
   );
 
   const handleTitleTypeChange = (newTitleType: 'all' | 'serie' | 'movie' | undefined) => {
@@ -64,10 +66,14 @@ const Index = () => {
   const { users, getUserNameById } = useUsers();
 
   const getRatingForUser = useCallback((titleId: string, userId: string) => {
+    // A user can hold one rating per group for the same title, so match the active
+    // group too instead of trusting the payload to already be scoped to it. The group
+    // comes from the same reactive value that keys the query behind `ratingsMap`, so
+    // the two can never disagree.
     const list = ratingsMap[titleId] || [];
-    const r = list.find(x => x.userId === userId);
+    const r = list.find(x => x.userId === userId && x.groupId === activeGroupId);
     return r ? { rating: r.note, seasonsRatings: r.seasonsRatings } : undefined;
-  }, [ratingsMap]);
+  }, [ratingsMap, activeGroupId]);
 
   useEffect(() => {
     const userId = getUserId();
@@ -75,20 +81,22 @@ const Index = () => {
       navigate('/login', { replace: true });
       return;
     }
-    // Auto-select first group if none selected
-    if (!getGroupId() && groups.length > 0) {
+    // Auto-select first group if none selected. The write is reactive, so the movies
+    // and users queries re-key onto the new group on their own.
+    if (!activeGroupId && groups.length > 0) {
       saveGroupId(groups[0].id);
-      refreshMovies();
     }
-  }, [navigate, groups, refreshMovies]);
+  }, [navigate, groups, activeGroupId]);
 
   const refreshRatingsForTitle = useCallback(async (_titleId: string) => {
     await refreshMovies();
   }, [refreshMovies]);
 
-  const handleGroupChange = async (newGroupId: string) => {
+  const handleGroupChange = (newGroupId: string) => {
+    // Reactive write: the re-render swings useMovies/useUsers onto the new group's
+    // query keys, which fetches it. Invalidating here would only ever hit the *old*
+    // group's key (captured by refreshMovies) and refetch the group we just left.
     saveGroupId(newGroupId);
-    await refreshMovies();
   };
 
   const handleGroupCreated = async () => {
@@ -162,7 +170,7 @@ const Index = () => {
               titleType={titleType}
               onTitleTypeChange={handleTitleTypeChange}
               groups={groups}
-              currentGroupId={getGroupId()}
+              currentGroupId={activeGroupId}
               onGroupChange={handleGroupChange}
             />
 

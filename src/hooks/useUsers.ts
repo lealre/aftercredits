@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { User } from '@/types/movie';
 import { fetchUsers } from '@/services/backendService';
-import { getGroupId } from '@/services/authService';
+import { useActiveGroupId } from '@/hooks/useActiveGroupId';
 
 export const useUsers = () => {
-  const groupId = getGroupId();
+  const groupId = useActiveGroupId();
 
   const { data: users = [], isLoading: loading, error: queryError } = useQuery<User[]>({
     queryKey: ['users', groupId],

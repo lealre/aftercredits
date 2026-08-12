@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Movie, PaginationParams, Rating } from "@/types/movie";
 import { fetchMovies } from "@/services/backendService";
-import { getGroupId } from "@/services/authService";
+import { useActiveGroupId } from "@/hooks/useActiveGroupId";
 
 export const useMovies = (
   watchedFilter?: boolean,
@@ -17,7 +17,7 @@ export const useMovies = (
   const [orderBy, setOrderBy] = useState<string | undefined>(initialOrderBy);
   const [ascending, setAscending] = useState<boolean>(initialAscending ?? true);
 
-  const groupId = getGroupId();
+  const groupId = useActiveGroupId();
 
   const params: PaginationParams = {
     page,

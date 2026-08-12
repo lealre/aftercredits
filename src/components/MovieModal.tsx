@@ -35,7 +35,8 @@ import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { CommentsSection } from './modal/CommentsSection';
 import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, deleteRating, deleteRatingSeason as deleteRatingSeasonService } from '@/services/backendService';
-import { getGroupId, getUserId } from '@/services/authService';
+import { getUserId } from '@/services/authService';
+import { useActiveGroupId } from '@/hooks/useActiveGroupId';
 import { useEpisodes } from '@/hooks/useEpisodes';
 
 interface MovieModalProps {
@@ -55,7 +56,10 @@ interface MovieModalProps {
 export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefreshRatings, onRefreshMovies, users, getUserNameById, ratings, getRatingForUser }: MovieModalProps) => {
   const { toast } = useToast();
   const currentUserId = getUserId();
-  
+  // Ratings are group-scoped, so resolving one needs the active group as well as the
+  // user. Read reactively so it stays in step with the `ratings` prop's group.
+  const currentGroupId = useActiveGroupId();
+
   // Check if this is a TV series - must be declared before useEffects that use it
   const isTVSeries = movie.type === 'tvSeries' || movie.type === 'tvMiniSeries';
 
@@ -218,7 +222,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     
     try {
       // Find the full rating object from the ratings array (which includes the id)
-      const fullRating = ratings.find(r => r.userId === userId && r.titleId === movie.imdbId);
+      const fullRating = ratings.find(r => r.userId === userId && r.titleId === movie.imdbId && r.groupId === currentGroupId);
       if (!fullRating) {
         toast({
           title: "Error",
@@ -300,7 +304,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const handleSave = async () => {
     setSaving(true);
     try {
-      const groupId = getGroupId();
+      const groupId = currentGroupId;
       if (!groupId) {
         toast({
           title: "No group selected",
@@ -370,7 +374,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
           : (movie.watchedAt ?? '');
 
       if (watched !== baselineWatched || currentWatchedAt !== baselineWatchedAt) {
-        const groupId = getGroupId();
+        const groupId = currentGroupId;
         if (!groupId) {
           toast({
             title: "No group selected",
@@ -435,7 +439,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     setDeleting(true);
     try {
       // Delete from backend
-      const groupId = getGroupId();
+      const groupId = currentGroupId;
       if (!groupId) {
         toast({
           title: "No group selected",
@@ -566,7 +570,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                       .sort((a, b) => parseInt(a.season, 10) - parseInt(b.season, 10))
                       .map((season) => {
                         // Check if current user has rated this season
-                        const currentUserRating = ratings.find(r => r.userId === currentUserId && r.titleId === movie.imdbId);
+                        const currentUserRating = ratings.find(r => r.userId === currentUserId && r.titleId === movie.imdbId && r.groupId === currentGroupId);
                         const hasRating = currentUserRating?.seasonsRatings?.[season.season] !== undefined;
                         
                         return (

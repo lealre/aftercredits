@@ -95,6 +95,7 @@ export const saveLoginData = (data: LoginSuccess) => {
   } else {
     localStorage.removeItem(GROUP_ID_KEY);
   }
+  notifyGroupIdChanged();
 };
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY) ?? "";
@@ -103,14 +104,32 @@ export const clearToken = () => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_ID_KEY);
   localStorage.removeItem(GROUP_ID_KEY);
+  notifyGroupIdChanged();
 };
 
 export const getUserId = (): string | null => {
   return localStorage.getItem(USER_ID_KEY);
 };
 
+// localStorage is not reactive, but the active group now feeds query keys and the
+// group term of every rating/comment predicate. Writes are broadcast so subscribers
+// (see useActiveGroupId) re-render onto the new group instead of keeping the old one.
+const groupIdListeners = new Set<() => void>();
+
+const notifyGroupIdChanged = () => {
+  groupIdListeners.forEach((listener) => listener());
+};
+
+export const subscribeToGroupId = (listener: () => void): (() => void) => {
+  groupIdListeners.add(listener);
+  return () => {
+    groupIdListeners.delete(listener);
+  };
+};
+
 export const saveGroupId = (groupId: string) => {
   localStorage.setItem(GROUP_ID_KEY, groupId);
+  notifyGroupIdChanged();
 };
 
 export const getGroupId = (): string | null => {
@@ -119,6 +138,7 @@ export const getGroupId = (): string | null => {
 
 export const clearGroupId = () => {
   localStorage.removeItem(GROUP_ID_KEY);
+  notifyGroupIdChanged();
 };
 
 export const getTokenOrRedirect = () => {
