@@ -7,8 +7,15 @@ import {
 } from '@/services/backendService';
 import { getToken } from '@/services/authService';
 import { useToast } from '@/hooks/use-toast';
+import {
+  ACTIVITY_FEED_FIRST_KEY,
+  ACTIVITY_PAGE_SIZE,
+  ACTIVITY_UNREAD_COUNT_KEY,
+  useActivityStream,
+} from '@/hooks/useActivityStream';
 import { describeActivityText } from '@/lib/activityText';
 import {
+  ActivityEvent,
   ActivityFeed,
   ActivityFeatureDisabledError,
   ActivitySessionExpiredError,
@@ -16,21 +23,28 @@ import {
 } from '@/types/activity';
 
 /**
- * How often the unread badge re-checks while the tab is focused.
+ * How often the unread badge re-checks — in degraded mode ONLY.
  *
- * A minute reads as broken when two people use the app side by side, which is
- * how this gets tested; 10s is short enough to feel live and still cheap — the
- * count is one indexed query, and this backend serves a handful of users on a
- * Raspberry Pi.
+ * Phase 1 polled on this interval as the normal path. Phase 2's normal path is
+ * the SSE stream, and while it is live this interval must be off: a push and a
+ * poll doing the same job is one of them wasted. It survives as the fallback
+ * for a proxy that will not carry a stream, so the feature degrades to phase 1
+ * behaviour rather than to nothing.
  *
- * It cannot be made instant by shortening it further: polling has a floor of
- * "however long since the last tick". Real immediacy is phase 2, which replaces
- * this with a server push (SSE) and deletes this constant.
+ * Kept at phase 1's 10s rather than made slower, deliberately: degraded mode
+ * is the state where the user has no other source of updates, so making it
+ * lazier would punish exactly the situation it exists for. The count is one
+ * indexed query for a handful of users.
  */
-const UNREAD_POLL_INTERVAL_MS = 10_000;
+const DEGRADED_POLL_INTERVAL_MS = 10_000;
 
-/** Rows fetched per feed page. */
-export const ACTIVITY_PAGE_SIZE = 15;
+/**
+ * Re-exported from its new home. The page size now belongs to the stream
+ * module, which takes the connect-time snapshot with it, and one page size has
+ * to serve both or the first page would change length depending on which of
+ * them wrote it last.
+ */
+export { ACTIVITY_PAGE_SIZE };
 
 /**
  * A failure that means "stop asking", not "retry": the feature is switched off
@@ -43,13 +57,26 @@ const isTerminal = (error: unknown) =>
   error instanceof ActivitySessionExpiredError;
 
 /**
- * The unread badge count, polled, plus a toast when new activity arrives.
+ * The unread badge count, pushed over SSE, plus a toast when new activity
+ * arrives.
+ *
+ * Two sources, never both at once:
+ *
+ * - **Live** (the normal path): useActivityStream keeps the cached count
+ *   current — a snapshot on connect, +1 per pushed event — and announces each
+ *   event from the frame it just received. The poll interval is off.
+ * - **Degraded**: the stream could not be established (a proxy that buffers,
+ *   or a backend without the stream routes), so the phase 1 poll takes over
+ *   and the toast falls back to noticing the count go up.
  *
  * The toast fires only on an *increase* against a baseline taken from the first
- * successful poll — so opening the app with 4 unread does not announce them,
+ * successful read — so opening the app with 4 unread does not announce them,
  * and marking things read (which lowers the count) never announces anything.
  * The count already excludes the user's own actions, so nobody is toasted
  * about their own rating.
+ *
+ * Mount this once. It owns the app's single stream connection, and a second
+ * copy would open a second one. Today that is ActivityBell, in the header.
  */
 export const useActivityUnreadCount = () => {
   const token = getToken();
@@ -57,11 +84,23 @@ export const useActivityUnreadCount = () => {
   const [stopped, setStopped] = useState(false);
   const previousUnread = useRef<number | null>(null);
 
+  // Named from the event itself: the stream already delivered the whole row,
+  // so unlike the poll path below this costs no extra request.
+  const announce = useCallback(
+    (event: ActivityEvent) => {
+      toast({ title: 'New activity', description: describeActivityText(event) });
+    },
+    [toast]
+  );
+
+  const { live, degraded } = useActivityStream(!!token && !stopped, announce);
+
   const query = useQuery<ActivityUnreadCount>({
-    queryKey: ['activity', 'unread-count'],
+    queryKey: ACTIVITY_UNREAD_COUNT_KEY,
     queryFn: fetchActivityUnreadCount,
     enabled: !!token && !stopped,
-    refetchInterval: stopped ? false : UNREAD_POLL_INTERVAL_MS,
+    // Off unless the stream has proven it cannot work here.
+    refetchInterval: !stopped && degraded ? DEGRADED_POLL_INTERVAL_MS : false,
     // Already TanStack's default; stated explicitly because it is load-bearing
     // here. Two accounts open side by side is the way this gets used, and
     // clicking into the other window refetches at once rather than waiting out
@@ -80,10 +119,17 @@ export const useActivityUnreadCount = () => {
     if (query.isLoading || query.error) return;
 
     const previous = previousUnread.current;
+    // Tracked even when the toast below is skipped: a stale baseline would
+    // announce an old rise the moment the stream drops.
     previousUnread.current = unread;
 
     // First successful read is the baseline, not news.
     if (previous === null || unread <= previous) return;
+
+    // While the stream is live, every arrival was already announced from its
+    // own frame (see announce). Toasting the resulting rise too would double
+    // every notification. This path is the degraded one.
+    if (live) return;
 
     // Name what happened. One extra tiny request, only when the count rose.
     fetchActivityFeed({ limit: 1 })
@@ -98,7 +144,7 @@ export const useActivityUnreadCount = () => {
         // A toast is a nicety; never let its failure surface as an error.
         toast({ title: 'New activity', description: 'Someone in your groups did something' });
       });
-  }, [unread, query.isLoading, query.error, toast]);
+  }, [unread, live, query.isLoading, query.error, toast]);
 
   return {
     unread,
@@ -125,7 +171,9 @@ export const useActivityFeedPanel = (open: boolean) => {
   const [pages, setPages] = useState<ActivityFeed[]>([]);
 
   const first = useQuery<ActivityFeed>({
-    queryKey: ['activity', 'feed', 'first'],
+    // The same entry the stream merges pushed events into, so a row appears
+    // in an open panel without a refetch.
+    queryKey: ACTIVITY_FEED_FIRST_KEY,
     queryFn: () => fetchActivityFeed({ limit: ACTIVITY_PAGE_SIZE }),
     enabled: !!token && open,
     retry: (failureCount, error) => !isTerminal(error) && failureCount < 2,
@@ -140,7 +188,7 @@ export const useActivityFeedPanel = (open: boolean) => {
   const markRead = useMutation({
     mutationFn: markActivityRead,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['activity', 'unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ACTIVITY_UNREAD_COUNT_KEY });
     },
   });
 

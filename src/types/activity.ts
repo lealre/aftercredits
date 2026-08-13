@@ -37,6 +37,19 @@ export interface ActivityUnreadCount {
   unread: number;
 }
 
+/**
+ * What POST /activity/stream-ticket answers with.
+ *
+ * EventSource cannot send an Authorization header, so the SSE endpoint
+ * authenticates by a short-lived, single-use ticket minted through normal
+ * Bearer auth instead. `expiresIn` is seconds, and comes from the server so a
+ * client cannot assume a TTL the server does not honour.
+ */
+export interface ActivityStreamTicket {
+  ticket: string;
+  expiresIn: number;
+}
+
 /** The eleven kinds the backend emits (internal/activity/activity.go). */
 export type ActivityKind =
   | 'title_added'

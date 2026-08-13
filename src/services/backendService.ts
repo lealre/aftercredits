@@ -21,6 +21,7 @@ import {
 } from "./authService";
 import {
   ActivityFeed,
+  ActivityStreamTicket,
   ActivityUnreadCount,
   ActivityFeatureDisabledError,
   ActivitySessionExpiredError,
@@ -925,6 +926,35 @@ export const fetchActivityUnreadCount = async (): Promise<ActivityUnreadCount> =
   if (!response.ok) throw new Error("Failed to load the unread count");
   return response.json();
 };
+
+/**
+ * Mints a ticket for the SSE stream.
+ *
+ * Goes through activityFetch for the same reason the polls do: this runs in
+ * the background, on connect and on every reconnect, and a 401 from it must
+ * not throw the user at /login mid-session.
+ *
+ * The ticket is single-use with a short TTL, so a caller must mint a fresh one
+ * per connection attempt and never cache one.
+ */
+export const fetchActivityStreamTicket = async (): Promise<ActivityStreamTicket> => {
+  const response = await activityFetch(`${API_BASE_URL}/activity/stream-ticket`, {
+    method: "POST",
+  });
+  if (!response.ok) throw new Error("Failed to open the activity stream");
+  return response.json();
+};
+
+/**
+ * The URL EventSource connects to.
+ *
+ * The ticket travels in the query string because EventSource cannot set
+ * headers — which is also why it is a ticket and not the JWT: a query string
+ * ends up in access logs and browser history, and a ticket that leaks there is
+ * already spent and expired.
+ */
+export const activityStreamUrl = (ticket: string): string =>
+  `${API_BASE_URL}/activity/stream?ticket=${encodeURIComponent(ticket)}`;
 
 export const markActivityRead = async (seq: number): Promise<void> => {
   const response = await activityFetch(`${API_BASE_URL}/activity/read`, {
