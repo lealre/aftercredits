@@ -19,6 +19,12 @@ import {
   getErrorMessage,
   getGroupId,
 } from "./authService";
+import {
+  ActivityFeed,
+  ActivityUnreadCount,
+  ActivityFeatureDisabledError,
+  ActivitySessionExpiredError,
+} from "@/types/activity";
 
 const API_BASE_URL = "/api";
 
@@ -868,4 +874,63 @@ export const inviteToGroup = async (groupId: string, email: string): Promise<voi
     console.error("Error inviting user:", error);
     throw error;
   }
+};
+
+// ---------------------------------------------------------------------------
+// Activity feed
+// ---------------------------------------------------------------------------
+
+/**
+ * Like authFetch, but it never redirects to /login.
+ *
+ * The activity feed is polled in the background, and authFetch turns any 401
+ * into window.location.replace('/login'). A poll firing on a just-expired token
+ * would therefore eject the user mid-session with no interaction from them —
+ * possibly mid-form. This is the app's first background poller, so it is the
+ * first place that matters.
+ *
+ * Instead the caller gets a typed error and the hook stops polling. The user
+ * keeps whatever they were doing; the next request they actually initiate goes
+ * through authFetch and redirects properly.
+ */
+const activityFetch = async (url: string, options: RequestInit = {}) => {
+  const token = getToken();
+  if (!token) throw new ActivitySessionExpiredError();
+
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401) throw new ActivitySessionExpiredError();
+  // The routes only exist when the backend runs with ACTIVITY_FEED_ENABLED.
+  if (response.status === 404) throw new ActivityFeatureDisabledError();
+
+  return response;
+};
+
+export const fetchActivityFeed = async (
+  params: { limit?: number; before?: number } = {}
+): Promise<ActivityFeed> => {
+  const query = new URLSearchParams();
+  if (params.limit) query.set("limit", String(params.limit));
+  if (params.before) query.set("before", String(params.before));
+
+  const response = await activityFetch(`${API_BASE_URL}/activity?${query}`);
+  if (!response.ok) throw new Error("Failed to load activity");
+  return response.json();
+};
+
+export const fetchActivityUnreadCount = async (): Promise<ActivityUnreadCount> => {
+  const response = await activityFetch(`${API_BASE_URL}/activity/unread-count`);
+  if (!response.ok) throw new Error("Failed to load the unread count");
+  return response.json();
+};
+
+export const markActivityRead = async (seq: number): Promise<void> => {
+  const response = await activityFetch(`${API_BASE_URL}/activity/read`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seq }),
+  });
+  if (!response.ok) throw new Error("Failed to mark activity as read");
 };
