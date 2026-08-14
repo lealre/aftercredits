@@ -9,7 +9,10 @@
 
 export interface ActivityEvent {
   id: string;
-  /** Total-ordered cursor key. Also the value POST /activity/read takes. */
+  /**
+   * Total-ordered cursor key — the value `before` takes when paging. It is NOT
+   * a read cursor: read state is per event and named by `id`, not by `seq`.
+   */
   seq: number;
   groupId: string;
   groupName: string;
@@ -23,6 +26,17 @@ export interface ActivityEvent {
   /** Open map; the keys depend on the kind (note, previousNote, season, watched). */
   payload: Record<string, unknown>;
   createdAt: string;
+  /**
+   * Whether *the asking reader* has read this event.
+   *
+   * Always present — the backend does not mark it omitempty, precisely so a
+   * client cannot confuse an absent field with `false`. Unread is therefore
+   * `read === false` for that row and nothing else: it is a set, not a
+   * boundary, so marking one row read leaves its neighbours alone.
+   *
+   * On an SSE frame it is always false: a pushed event is new by definition.
+   */
+  read: boolean;
 }
 
 export interface ActivityFeed {

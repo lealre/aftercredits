@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchActivityFeed,
   fetchActivityUnreadCount,
-  markActivityRead,
+  markActivityEventRead,
+  markAllActivityRead,
 } from '@/services/backendService';
 import { getToken } from '@/services/authService';
 import { useToast } from '@/hooks/use-toast';
@@ -155,21 +156,44 @@ export const useActivityUnreadCount = () => {
 };
 
 /**
+ * Sets the read flag on the named rows of a page, leaving every other row
+ * untouched — and returning the *same array* when none of them are in it.
+ *
+ * The identity is what keeps the optimistic updates from churning: a page that
+ * does not hold the clicked row is not rewritten, so it does not re-render, and
+ * the row's DOM node survives the update with its focus intact.
+ */
+const withReadFlag = (events: ActivityEvent[], ids: Set<string>, read: boolean) => {
+  if (!events.some((event) => ids.has(event.id) && event.read !== read)) return events;
+  return events.map((event) =>
+    ids.has(event.id) && event.read !== read ? { ...event, read } : event
+  );
+};
+
+/**
  * The feed itself, fetched while the panel is open, plus cursor paging and
  * mark-as-read.
  *
- * Note what mark-as-read can and cannot express. The backend keeps ONE
- * watermark per user (`activity_reads.read_seq`, advanced monotonically), not a
- * read flag per event. So marking event S read necessarily marks everything
- * older than S read too — "read" is a boundary, not a set. Clicking a row
- * therefore means "I have seen this and everything below it", which is what the
- * ordering makes natural anyway.
+ * ## Read state is per event
  *
- * Nothing here advances the watermark as a side effect of *reading* the feed.
- * Opening the panel runs the query below and nothing else; the only calls to
- * POST /activity/read are the two the user asks for by clicking (a row, or
- * "mark all as read"). GET /activity does not move the watermark either, so an
- * unopened event stays unread until it is actually acted on.
+ * The backend keeps a read row per (reader, event), not one watermark per
+ * reader, and every event DTO carries `read` for the asking reader. So "unread"
+ * here is a *set*, not a boundary: it is exactly the rows with `read === false`,
+ * and nothing is inferred from a count plus a list position. Marking one row
+ * read leaves every other row — older ones included — exactly as it was, which
+ * is what makes clicking a single row a meaningful action at all.
+ *
+ * Nothing marks anything read as a side effect of *reading* the feed. Opening
+ * the panel runs the query below and nothing else; GET /activity does not
+ * change read state either. The only writes are the two the user asks for by
+ * clicking: a row, or "mark all as read".
+ *
+ * ## Paging
+ *
+ * The first page lives in a TanStack entry (shared with the stream, which
+ * merges pushed events into it); every "Load more" page is appended to local
+ * state. The two are flattened into one list that is deduplicated by id — see
+ * `events` below for why that matters.
  */
 export const useActivityFeedPanel = (open: boolean) => {
   const token = getToken();
@@ -185,75 +209,166 @@ export const useActivityFeedPanel = (open: boolean) => {
     retry: (failureCount, error) => !isTerminal(error) && failureCount < 2,
   });
 
-  const loadMore = useMutation({
+  const loadMoreMutation = useMutation({
     mutationFn: (before: number) =>
       fetchActivityFeed({ limit: ACTIVITY_PAGE_SIZE, before }),
     onSuccess: (page) => setPages((prev) => [...prev, page]),
   });
 
-  const events = [
-    ...(first.data?.events ?? []),
-    ...pages.flatMap((page) => page.events),
-  ];
+  /**
+   * Every loaded row, newest first, each id appearing once.
+   *
+   * The dedupe is load-bearing in both directions, and it is the reason this is
+   * a fold rather than a flat concat:
+   *
+   * - **Live pushes.** A pushed event is prepended to the first page's cache
+   *   entry by the stream. It is newer than every `before` cursor already
+   *   spent, so it cannot come back in a later page — but the stream also
+   *   re-snapshots the first page on every reconnect, and a snapshot taken
+   *   after rows were deleted can pull up rows an appended page already holds.
+   * - **Refetches.** The first page refetches on window focus. Its window
+   *   slides as the log grows, so it can overlap page 2 for the same reason.
+   *
+   * First occurrence wins, and the first page is scanned first, so the copy
+   * that survives is always the freshest one — the one carrying the `read`
+   * flag the optimistic updates below have been writing to.
+   *
+   * Order stays newest-first: the first page is sorted by the stream on merge,
+   * and every appended page's seqs are strictly below the cursor that fetched
+   * it.
+   */
+  const events = useMemo(() => {
+    const seen = new Set<string>();
+    const merged: ActivityEvent[] = [];
+    for (const event of [
+      ...(first.data?.events ?? []),
+      ...pages.flatMap((page) => page.events),
+    ]) {
+      if (seen.has(event.id)) continue;
+      seen.add(event.id);
+      merged.push(event);
+    }
+    return merged;
+  }, [first.data, pages]);
 
-  // Read by the mutation below, which runs outside render and must see the list
+  // Read by the mutations below, which run outside render and must see the list
   // as it is at click time rather than as it was when the mutation was created.
   const eventsRef = useRef(events);
   eventsRef.current = events;
 
-  const markRead = useMutation({
-    mutationFn: markActivityRead,
-    // The badge has to move on the click, not a round trip later, and the count
-    // after moving the watermark to S is knowable here: it is the number of
-    // still-unread rows newer than S. The feed is newest-first and complete
-    // from the top, so every event newer than S is already loaded — nothing
-    // unloaded can be newer than a row the user just clicked.
-    //
-    // Clamped by the current count because the watermark only ever moves
-    // forward (the backend upserts with GREATEST): clicking an already-read row
-    // is a no-op server-side, and must not *raise* the badge here either.
-    onMutate: (seq: number) => {
-      queryClient.setQueryData<ActivityUnreadCount>(ACTIVITY_UNREAD_COUNT_KEY, (count) => {
-        if (!count) return count;
-        const newer = eventsRef.current.filter((event) => event.seq > seq).length;
-        return { unread: Math.min(count.unread, newer) };
+  /**
+   * Flip the read flag on a set of rows, everywhere those rows are held.
+   *
+   * A row can live in either of two stores — the first page's cache entry or
+   * the appended pages in local state — and which one is not knowable from the
+   * id, so both are visited. A store that holds none of them is left completely
+   * alone, down to object identity.
+   *
+   * Takes a set rather than one id so "mark all as read" is a single pass and a
+   * single render, not one per row.
+   */
+  const setReadFlags = useCallback(
+    (ids: Set<string>, read: boolean) => {
+      if (ids.size === 0) return;
+
+      queryClient.setQueryData<ActivityFeed>(ACTIVITY_FEED_FIRST_KEY, (feed) => {
+        if (!feed) return feed;
+        const events = withReadFlag(feed.events, ids, read);
+        return events === feed.events ? feed : { ...feed, events };
+      });
+
+      setPages((prev) => {
+        let changed = false;
+        const next = prev.map((page) => {
+          const events = withReadFlag(page.events, ids, read);
+          if (events === page.events) return page;
+          changed = true;
+          return { ...page, events };
+        });
+        return changed ? next : prev;
       });
     },
-    // On success it confirms the optimistic value; on failure it puts the real
-    // one back, so a rejected write cannot leave the badge lying.
+    [queryClient]
+  );
+
+  const markRead = useMutation({
+    mutationFn: markActivityEventRead,
+    // The row and the badge both have to move on the click, not a round trip
+    // later. Per-event read state makes the new count exactly knowable: one
+    // fewer, and only if this row was actually unread — re-clicking a read row
+    // is a 204 no-op server-side and must not move the badge here either.
+    onMutate: (id: string) => {
+      const wasUnread = eventsRef.current.some((event) => event.id === id && !event.read);
+      setReadFlags(new Set([id]), true);
+      if (wasUnread) {
+        queryClient.setQueryData<ActivityUnreadCount>(ACTIVITY_UNREAD_COUNT_KEY, (count) =>
+          count ? { unread: Math.max(0, count.unread - 1) } : count
+        );
+      }
+      return { wasUnread };
+    },
+    // A rejected write must not leave the row lying either. Only a row this
+    // call actually changed is put back.
+    onError: (_error, id, context) => {
+      if (context?.wasUnread) setReadFlags(new Set([id]), false);
+    },
+    // On success this confirms the optimistic count; on failure it replaces it
+    // with the server's.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ACTIVITY_UNREAD_COUNT_KEY });
+    },
+  });
+
+  /**
+   * Mark everything read — including rows that were never loaded.
+   *
+   * This is a single call that clears the badge server-side, so it is not "mark
+   * the loaded rows read": the count goes to 0 because everything invisible is
+   * covered too. Locally only the loaded rows can be repainted, which is all
+   * the user can see.
+   */
+  const markAllRead = useMutation({
+    mutationFn: markAllActivityRead,
+    onMutate: () => {
+      const unreadIds = new Set(
+        eventsRef.current.filter((event) => !event.read).map((event) => event.id)
+      );
+      setReadFlags(unreadIds, true);
+      queryClient.setQueryData<ActivityUnreadCount>(ACTIVITY_UNREAD_COUNT_KEY, { unread: 0 });
+      return { unreadIds };
+    },
+    // Restores exactly the rows this call flipped, so a failure cannot silently
+    // swallow the panel's unread marks. Rows pushed in by the stream while the
+    // request was in flight were never flipped, so they stay unread throughout.
+    onError: (_error, _variables, context) => {
+      if (context) setReadFlags(context.unreadIds, false);
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ACTIVITY_UNREAD_COUNT_KEY });
     },
   });
 
   const last = pages.length > 0 ? pages[pages.length - 1] : first.data;
+  const nextBefore = last?.nextBefore ?? null;
+  const hasMore = (last?.hasMore ?? false) && nextBefore !== null;
 
   const reset = useCallback(() => setPages([]), []);
-
-  /**
-   * Mark everything read.
-   *
-   * One watermark means this is just "mark the newest event read": the newest
-   * loaded event is the newest that exists for this user (the first page is the
-   * head of the log), so moving the watermark there covers the whole feed.
-   */
-  const markAllRead = () => {
-    const newest = eventsRef.current[0];
-    if (newest) markRead.mutate(newest.seq);
-  };
 
   return {
     events,
     isLoading: first.isLoading,
     isError: !!first.error && !isTerminal(first.error),
-    hasMore: last?.hasMore ?? false,
-    nextBefore: last?.nextBefore ?? null,
-    loadMore: (before: number) => loadMore.mutate(before),
-    isLoadingMore: loadMore.isPending,
-    markRead: (seq: number) => markRead.mutate(seq),
-    markAllRead,
-    /** No event loaded means there is nothing whose seq we could mark read. */
-    canMarkAllRead: events.length > 0,
+    /** True only when there is both more to fetch and a cursor to fetch it with. */
+    hasMore,
+    isLoadingMore: loadMoreMutation.isPending,
+    /** No-op unless there is a cursor and no page already in flight. */
+    loadMore: () => {
+      if (nextBefore === null || loadMoreMutation.isPending) return;
+      loadMoreMutation.mutate(nextBefore);
+    },
+    markRead: (id: string) => markRead.mutate(id),
+    markAllRead: () => markAllRead.mutate(),
+    isMarkingAllRead: markAllRead.isPending,
     reset,
   };
 };

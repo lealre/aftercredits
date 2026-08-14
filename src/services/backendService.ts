@@ -26,6 +26,7 @@ import {
   ActivityFeatureDisabledError,
   ActivitySessionExpiredError,
 } from "@/types/activity";
+import { normalizeNote } from "@/lib/rating";
 
 const API_BASE_URL = "/api";
 
@@ -345,11 +346,13 @@ export const updateRating = async (
   }
 ): Promise<Rating> => {
   try {
-    const body: { note: number; season?: number } = { note: ratingData.note };
+    // Normalized here as well as at the input, so no caller can put a note the
+    // backend would 400 on (ErrNoteTooPrecise) onto the wire.
+    const body: { note: number; season?: number } = { note: normalizeNote(ratingData.note) };
     if (ratingData.season !== undefined) {
       body.season = ratingData.season;
     }
-    
+
     const response = await authFetch(`${API_BASE_URL}/ratings/${ratingId}`, {
       method: "PATCH",
       headers: {
@@ -436,7 +439,8 @@ export const saveRating = async (ratingData: {
     const body: { groupId: string; titleId: string; note: number; season?: number } = {
       groupId: ratingData.groupId,
       titleId: ratingData.titleId,
-      note: ratingData.note,
+      // See updateRating: one decimal is a contract, enforced on every path out.
+      note: normalizeNote(ratingData.note),
     };
     if (ratingData.season !== undefined) {
       body.season = ratingData.season;
@@ -894,7 +898,17 @@ export const inviteToGroup = async (groupId: string, email: string): Promise<voi
  * keeps whatever they were doing; the next request they actually initiate goes
  * through authFetch and redirects properly.
  */
-const activityFetch = async (url: string, options: RequestInit = {}) => {
+const activityFetch = async (
+  url: string,
+  options: RequestInit = {},
+  // Whether a 404 on this route means "the feature is switched off".
+  //
+  // True for every route whose only 404 is a missing route. NOT true for
+  // POST /activity/events/{id}/read, which also answers 404 for an id that is
+  // unknown, not visible to you, or your own action — reading that as "the
+  // feature is off" would let one bad row silence the whole bell.
+  { disabledOn404 = true }: { disabledOn404?: boolean } = {}
+) => {
   const token = getToken();
   if (!token) throw new ActivitySessionExpiredError();
 
@@ -904,7 +918,7 @@ const activityFetch = async (url: string, options: RequestInit = {}) => {
 
   if (response.status === 401) throw new ActivitySessionExpiredError();
   // The routes only exist when the backend runs with ACTIVITY_FEED_ENABLED.
-  if (response.status === 404) throw new ActivityFeatureDisabledError();
+  if (disabledOn404 && response.status === 404) throw new ActivityFeatureDisabledError();
 
   return response;
 };
@@ -956,11 +970,34 @@ export const fetchActivityStreamTicket = async (): Promise<ActivityStreamTicket>
 export const activityStreamUrl = (ticket: string): string =>
   `${API_BASE_URL}/activity/stream?ticket=${encodeURIComponent(ticket)}`;
 
-export const markActivityRead = async (seq: number): Promise<void> => {
-  const response = await activityFetch(`${API_BASE_URL}/activity/read`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ seq }),
-  });
+/**
+ * Mark exactly one event read.
+ *
+ * Read state is per event, so the row is named in the path and there is no
+ * body: a request with no body cannot be half-decoded into the wrong event.
+ * Idempotent — marking an already-read row read again is a 204.
+ *
+ * A 404 here means the id is unknown, not visible to this user, or their own
+ * action. That is a bad row, not a switched-off feature, so it is deliberately
+ * NOT mapped to ActivityFeatureDisabledError (which would hide the bell).
+ */
+export const markActivityEventRead = async (eventId: string): Promise<void> => {
+  const response = await activityFetch(
+    `${API_BASE_URL}/activity/events/${encodeURIComponent(eventId)}/read`,
+    { method: "POST" },
+    { disabledOn404: false }
+  );
   if (!response.ok) throw new Error("Failed to mark activity as read");
+};
+
+/**
+ * Clear the badge in one call. No body, idempotent, 204.
+ *
+ * Its only 404 is a missing route, so the default mapping applies.
+ */
+export const markAllActivityRead = async (): Promise<void> => {
+  const response = await activityFetch(`${API_BASE_URL}/activity/read-all`, {
+    method: "POST",
+  });
+  if (!response.ok) throw new Error("Failed to mark all activity as read");
 };

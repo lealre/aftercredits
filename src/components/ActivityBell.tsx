@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Bell, Loader2 } from 'lucide-react';
+import { Bell, ExternalLink, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -23,6 +25,25 @@ const BADGE_MAX = 9;
  *
  * Renders nothing at all when the backend has the feature switched off (its
  * routes 404) or the session has expired — a broken bell is worse than none.
+ *
+ * ## Why every control here is a DropdownMenuItem
+ *
+ * The rows used to be plain `<button>`s inside the menu, and that was the cause
+ * of two separate bugs rather than one:
+ *
+ * 1. Radix's roving focus only walks its own items, so arrow keys did not move
+ *    between rows — the list was mouse-only in practice.
+ * 2. Radix's Content calls `preventDefault()` on Tab (react-menu keeps focus
+ *    inside an open menu), so a non-item button in here is reachable by NO key
+ *    at all. "Mark all as read" was in exactly that position.
+ *
+ * Using the menu's own item primitive fixes both at once and for free:
+ * `Item` renders `role="menuitem"`, joins the roving focus group (ArrowUp /
+ * ArrowDown / Home / End), joins typeahead, and focuses itself on pointer move.
+ * The one behaviour we do not want — closing the panel on select — is the one
+ * Radix lets you decline, by calling `preventDefault()` on the `onSelect`
+ * event. So every control below is an Item, and each one decides for itself
+ * whether selecting it should dismiss the panel.
  */
 export const ActivityBell = () => {
   const navigate = useNavigate();
@@ -33,12 +54,11 @@ export const ActivityBell = () => {
     isLoading,
     isError,
     hasMore,
-    nextBefore,
     loadMore,
     isLoadingMore,
     markRead,
     markAllRead,
-    canMarkAllRead,
+    isMarkingAllRead,
     reset,
   } = useActivityFeedPanel(open);
 
@@ -48,9 +68,8 @@ export const ActivityBell = () => {
    * Opening the panel loads the feed and nothing else — deliberately.
    *
    * Marking things read on open would clear activity the user never actually
-   * looked at, and with a single watermark that loss is not recoverable. Read
-   * state only ever moves because of a click: on a row, or on "mark all as
-   * read".
+   * looked at. Read state only ever moves because of a click: on a row, or on
+   * "mark all as read".
    */
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -58,29 +77,39 @@ export const ActivityBell = () => {
   };
 
   /**
-   * Which rows are unread.
+   * Selecting a row marks *that* row read and stays put.
    *
-   * The backend keeps one watermark per user rather than a flag per event, so
-   * it reports only *how many* are unread. The feed is newest-first and the
-   * count uses the same visibility rules, so the newest `unread` rows are
-   * exactly the unread ones — no extra endpoint needed.
+   * Per-event read state is what makes this honest: the click marks one row and
+   * leaves its neighbours — older ones included — alone. The panel deliberately
+   * does not close, so the user can keep reading down the list, which is the
+   * whole point of the row being focusable.
    */
-  const isUnread = (index: number) => index < unread;
+  const handleRowSelect = (selectEvent: Event, event: ActivityEvent) => {
+    // Decline the menu's default "select dismisses the menu".
+    selectEvent.preventDefault();
+    markRead(event.id);
+    // Keyboard selection and mouse hover both leave focus on the item already;
+    // a touch tap does not (Radix only focuses on pointer move for a mouse).
+    // Focusing explicitly makes "click a row, then carry on with the arrow
+    // keys" work the same way however the row was reached.
+    (selectEvent.currentTarget as HTMLElement | null)?.focus();
+  };
 
   /**
-   * Clicking a row marks it read and opens it.
+   * The row's other action: go and look at the title.
    *
-   * With a watermark, marking event S read also marks everything older than S —
-   * "read" is a boundary, not a set. Given the list is newest-first, clicking a
-   * row means "I've seen this and everything below it", which is what the
-   * ordering implies anyway.
+   * There is no per-title route in this app, so this does what selecting a
+   * group on /groups does — switch the active group and show its watchlist,
+   * which is where the title is. Unlike the row itself this one DOES dismiss
+   * the panel (the default select behaviour), because it navigates away and a
+   * menu left hanging over the new page would have to be dismissed by hand.
+   *
+   * It also marks the row read: opening something is at least as strong a
+   * signal of having seen it as clicking it.
    */
-  const openEvent = (event: ActivityEvent) => {
-    markRead(event.seq);
-    // There is no per-title route in this app, so this does what selecting a
-    // group on /groups does: switch the active group and show its watchlist.
+  const openTitle = (event: ActivityEvent) => {
+    markRead(event.id);
     saveGroupId(event.groupId);
-    setOpen(false);
     navigate('/watchlist');
   };
 
@@ -102,33 +131,36 @@ export const ActivityBell = () => {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent className="w-80" align="end">
-        <DropdownMenuLabel className="font-normal flex items-start justify-between gap-2">
-          <span className="min-w-0">
+        {/*
+          Presentational: role="menu" wants menuitem / group / separator
+          children, so this flex box says it is only here to place things.
+        */}
+        <div role="presentation" className="flex items-start justify-between gap-2">
+          <DropdownMenuLabel className="font-normal min-w-0">
             <span className="block text-sm font-medium leading-none">Activity</span>
             <span className="block text-xs leading-none text-muted-foreground mt-1">
               What others in your groups have been up to
             </span>
-          </span>
+          </DropdownMenuLabel>
           {/*
             Explicit, and the only bulk way read state moves. Disabled rather
             than hidden so the panel's header does not change shape as the count
             drops to zero. The badge updates on the click, not on the response —
             the mutation writes the new count optimistically.
           */}
-          <button
-            type="button"
-            onClick={(event) => {
-              // Keep the panel open: this is not a menu item, and dismissing it
-              // would hide the rows the user just chose to keep looking at.
-              event.preventDefault();
+          <DropdownMenuItem
+            disabled={unread === 0 || isMarkingAllRead}
+            onSelect={(selectEvent) => {
+              // Keep the panel open: dismissing it would hide the rows the user
+              // just chose to keep looking at.
+              selectEvent.preventDefault();
               markAllRead();
             }}
-            disabled={unread === 0 || !canMarkAllRead}
-            className="shrink-0 rounded-sm px-1 py-0.5 text-xs font-normal text-muted-foreground hover:text-foreground hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-movie-blue disabled:pointer-events-none disabled:opacity-40"
+            className="shrink-0 mt-1 mr-1 px-1.5 py-0.5 text-xs text-muted-foreground focus:bg-movie-surface-hover focus:text-foreground"
           >
             Mark all as read
-          </button>
-        </DropdownMenuLabel>
+          </DropdownMenuItem>
+        </div>
         <DropdownMenuSeparator />
 
         {isLoading && (
@@ -152,96 +184,119 @@ export const ActivityBell = () => {
         )}
 
         {events.length > 0 && (
-          <div
-            // Focusable, so the list can be scrolled with the arrow keys by
-            // someone not using a pointer — a scrollable region only a mouse
-            // can reach is not reachable.
-            tabIndex={0}
+          // A Group (role="group") rather than a bare div: it is a legal child
+          // of role="menu", and unlike the focusable div this used to be it adds
+          // no tab stop of its own — the items inside are what focus now, and
+          // arrowing onto one scrolls it into view.
+          <DropdownMenuGroup
             aria-label="Recent activity"
-            className="max-h-80 overflow-y-auto scrollbar-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-movie-blue rounded-sm"
+            className="max-h-80 overflow-y-auto scrollbar-subtle"
           >
-            {events.map((event, index) => {
-              const unreadRow = isUnread(index);
+            {events.map((event) => {
+              // Unread is per event now: the row's own flag, never "the newest
+              // N rows" inferred from a count and a list position.
+              const unreadRow = !event.read;
               return (
-                <button
+                <div
                   key={event.id}
-                  type="button"
-                  onClick={() => openEvent(event)}
-                  aria-label={`${describeActivityText(event)}${unreadRow ? ' (unread)' : ''}`}
-                  // NOT hover:bg-accent: --accent is this theme's warm golden,
-                  // paired with a near-black --accent-foreground the row's text
-                  // does not adopt, so hovering used to put light text on amber.
-                  // --movie-surface-hover is the app's own surface token for
-                  // exactly this, and it is defined in both themes, so the
-                  // foreground tokens below stay readable against it either way.
-                  className="group w-full text-left flex items-start gap-2 px-2 py-2 rounded-sm hover:bg-movie-surface-hover focus:bg-movie-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-movie-blue"
+                  role="presentation"
+                  className="flex items-stretch gap-1"
                 >
-                  {/* The dot keeps its column on read rows too, so lines don't shift. */}
-                  <span
-                    aria-hidden="true"
-                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                      unreadRow ? 'bg-movie-blue' : 'bg-transparent'
-                    }`}
-                  />
-                  <span className="min-w-0">
+                  <DropdownMenuItem
+                    onSelect={(selectEvent) => handleRowSelect(selectEvent, event)}
+                    aria-label={`${describeActivityText(event)}${unreadRow ? ' (unread)' : ''}`}
+                    // Typeahead matches the sentence rather than the concatenated
+                    // spans below, so typing a name jumps to that person's row.
+                    textValue={describeActivityText(event)}
+                    // NOT focus:bg-accent (the Item default): --accent is this
+                    // theme's warm golden, paired with a near-black
+                    // --accent-foreground the row's text does not adopt, so
+                    // highlighting used to put light text on amber.
+                    // --movie-surface-hover is the app's own surface token for
+                    // exactly this, defined in both themes, so the foreground
+                    // tokens below stay readable against it either way.
+                    className="group min-w-0 flex-1 items-start gap-2 px-2 py-2 focus:bg-movie-surface-hover focus:text-foreground"
+                  >
+                    {/* The dot keeps its column on read rows too, so lines don't shift. */}
                     <span
-                      className={`block text-sm leading-snug ${
-                        unreadRow
-                          ? 'text-foreground font-medium'
-                          : // A read row is dimmed until it is hovered or
-                            // focused, where it comes up to full contrast
-                            // rather than staying grey on a lighter surface.
-                            'text-muted-foreground group-hover:text-foreground group-focus:text-foreground'
+                      aria-hidden="true"
+                      className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                        unreadRow ? 'bg-movie-blue' : 'bg-transparent'
                       }`}
-                    >
-                      {describeActivity(event).map((segment, i) =>
-                        typeof segment === 'string' ? (
-                          <span key={i}>{segment}</span>
-                        ) : (
-                          // The title is italic so it reads as a distinct thing
-                          // inside the sentence, and takes no colour of its own:
-                          // it inherits the row's, so a read row stays uniformly
-                          // dimmed and a hovered one comes up with the rest of
-                          // the line. (This carried `text-movie-gold`, which no
-                          // theme defines — see tailwind.config.ts — so it was
-                          // already inheriting. Left inheriting on purpose: a
-                          // golden italic would sit at roughly 2:1 against the
-                          // light theme's hover surface.)
-                          <em key={i} className="italic">
-                            {segment.title}
-                          </em>
-                        )
-                      )}
+                    />
+                    <span className="min-w-0">
+                      <span
+                        className={`block text-sm leading-snug ${
+                          unreadRow
+                            ? 'text-foreground font-medium'
+                            : // A read row is dimmed until it is highlighted,
+                              // where it comes up to full contrast rather than
+                              // staying grey on a lighter surface.
+                              'text-muted-foreground group-focus:text-foreground'
+                        }`}
+                      >
+                        {describeActivity(event).map((segment, i) =>
+                          typeof segment === 'string' ? (
+                            <span key={i}>{segment}</span>
+                          ) : (
+                            // The title is italic so it reads as a distinct thing
+                            // inside the sentence, and takes no colour of its own:
+                            // it inherits the row's, so a read row stays uniformly
+                            // dimmed and a highlighted one comes up with the rest
+                            // of the line. (This carried `text-movie-gold`, which
+                            // no theme defines — see tailwind.config.ts — so it
+                            // was already inheriting. Left inheriting on purpose:
+                            // a golden italic would sit at roughly 2:1 against the
+                            // light theme's hover surface.)
+                            <em key={i} className="italic">
+                              {segment.title}
+                            </em>
+                          )
+                        )}
+                      </span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        {event.groupName} · {activityTimeAgo(event.createdAt)}
+                      </span>
                     </span>
-                    <span className="block text-xs text-muted-foreground mt-0.5">
-                      {event.groupName} · {activityTimeAgo(event.createdAt)}
-                    </span>
-                  </span>
-                </button>
+                  </DropdownMenuItem>
+
+                  {/*
+                    Its own item, not a button nested inside the row's item: a
+                    menuitem must not contain another focusable element, and a
+                    nested button would be reachable by mouse only — the very
+                    bug this file just fixed. As a sibling item it sits in the
+                    same roving focus group, so ArrowDown steps row → open →
+                    next row and the affordance is keyboard-reachable.
+                  */}
+                  <DropdownMenuItem
+                    onSelect={() => openTitle(event)}
+                    aria-label={`Open ${event.titleName ? `${event.titleName} in ` : ''}${event.groupName}`}
+                    className="shrink-0 self-center px-2 py-2 text-muted-foreground focus:bg-movie-surface-hover focus:text-foreground"
+                  >
+                    <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                  </DropdownMenuItem>
+                </div>
               );
             })}
 
-            {hasMore && nextBefore !== null && (
+            {hasMore && (
               <>
                 <DropdownMenuSeparator />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  // Ghost's own hover is bg-accent too; same reasoning as the
-                  // rows above, so the whole panel hovers consistently.
-                  className="w-full hover:bg-movie-surface-hover hover:text-foreground"
+                <DropdownMenuItem
                   disabled={isLoadingMore}
-                  onClick={(e) => {
-                    // Keep the panel open while paging.
-                    e.preventDefault();
-                    loadMore(nextBefore);
+                  onSelect={(selectEvent) => {
+                    // Keep the panel open while paging — the whole point is to
+                    // read the rows that just arrived.
+                    selectEvent.preventDefault();
+                    loadMore();
                   }}
+                  className="justify-center text-sm focus:bg-movie-surface-hover focus:text-foreground"
                 >
-                  {isLoadingMore ? 'Loading…' : 'Show older'}
-                </Button>
+                  {isLoadingMore ? 'Loading…' : 'Load more'}
+                </DropdownMenuItem>
               </>
             )}
-          </div>
+          </DropdownMenuGroup>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
