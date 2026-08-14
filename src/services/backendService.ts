@@ -11,6 +11,7 @@ import {
   GroupResponse,
   SearchTitle,
   Episode,
+  TitleNotInGroupError,
 } from "@/types/movie";
 import {
   getToken,
@@ -19,6 +20,14 @@ import {
   getErrorMessage,
   getGroupId,
 } from "./authService";
+import {
+  ActivityFeed,
+  ActivityStreamTicket,
+  ActivityUnreadCount,
+  ActivityFeatureDisabledError,
+  ActivitySessionExpiredError,
+} from "@/types/activity";
+import { normalizeNote } from "@/lib/rating";
 
 const API_BASE_URL = "/api";
 
@@ -257,6 +266,67 @@ export const fetchMovies = async (
   }
 };
 
+/**
+ * One group's view of one title — the same object GET /groups/{id}/titles
+ * returns inside its `Content`, unwrapped.
+ *
+ * It exists because that list is paginated: a client holding only a title id
+ * (the activity feed, deep-linking a row to that title's modal) cannot count on
+ * the entry being on whichever page the grid happens to be showing. The backend
+ * builds it through the same assembly as the list, so the result is safe to
+ * feed to anything that renders a list entry.
+ *
+ * ## Why authFetch and not activityFetch
+ *
+ * Both distinctions matter here:
+ *
+ * - This is a `/groups` route, served whether or not the backend runs with the
+ *   activity feed switched on. Its 404 is a real, expected answer about one
+ *   title — mapping it to ActivityFeatureDisabledError the way the activity
+ *   routes do would be the "every 404 means the feature is off" bug all over
+ *   again, and would hide the whole bell over one removed film.
+ * - It is called from a click, not a background poll. activityFetch declines to
+ *   redirect on 401 precisely because a poll must not eject a user mid-session;
+ *   a 401 on something the user just asked for *should* land them on /login,
+ *   which is what authFetch does.
+ *
+ * `groupRatings` is null rather than [] when the group has rated nothing, so it
+ * is normalized to an array here — every consumer downstream takes a list.
+ */
+export const fetchGroupTitle = async (
+  groupId: string,
+  titleId: string
+): Promise<{ movie: Movie; ratings: Rating[] }> => {
+  const response = await authFetch(
+    `${API_BASE_URL}/groups/${encodeURIComponent(groupId)}/titles/${encodeURIComponent(titleId)}`
+  );
+
+  // Answered before the body is read: every 404 from this route carries the same
+  // uninformative message by design, so there is nothing in it to surface.
+  if (response.status === 404) {
+    throw new TitleNotInGroupError();
+  }
+
+  if (!response.ok) {
+    let message = "Failed to load the title";
+    try {
+      const errorData: ErrorResponse = await response.json();
+      message = errorData.errorMessage || message;
+    } catch {
+      // A body that will not parse is not worth failing differently over.
+    }
+    console.error("Error fetching group title:", response.status, message);
+    throw new Error(message);
+  }
+
+  const data: BackendMovie = await response.json();
+
+  return {
+    movie: mapBackendMovieToMovie(data),
+    ratings: data.groupRatings ?? [],
+  };
+};
+
 export const addMovieToBackend = async (
   groupId: string,
   url: string
@@ -338,11 +408,13 @@ export const updateRating = async (
   }
 ): Promise<Rating> => {
   try {
-    const body: { note: number; season?: number } = { note: ratingData.note };
+    // Normalized here as well as at the input, so no caller can put a note the
+    // backend would 400 on (ErrNoteTooPrecise) onto the wire.
+    const body: { note: number; season?: number } = { note: normalizeNote(ratingData.note) };
     if (ratingData.season !== undefined) {
       body.season = ratingData.season;
     }
-    
+
     const response = await authFetch(`${API_BASE_URL}/ratings/${ratingId}`, {
       method: "PATCH",
       headers: {
@@ -429,7 +501,8 @@ export const saveRating = async (ratingData: {
     const body: { groupId: string; titleId: string; note: number; season?: number } = {
       groupId: ratingData.groupId,
       titleId: ratingData.titleId,
-      note: ratingData.note,
+      // See updateRating: one decimal is a contract, enforced on every path out.
+      note: normalizeNote(ratingData.note),
     };
     if (ratingData.season !== undefined) {
       body.season = ratingData.season;
@@ -868,4 +941,125 @@ export const inviteToGroup = async (groupId: string, email: string): Promise<voi
     console.error("Error inviting user:", error);
     throw error;
   }
+};
+
+// ---------------------------------------------------------------------------
+// Activity feed
+// ---------------------------------------------------------------------------
+
+/**
+ * Like authFetch, but it never redirects to /login.
+ *
+ * The activity feed is polled in the background, and authFetch turns any 401
+ * into window.location.replace('/login'). A poll firing on a just-expired token
+ * would therefore eject the user mid-session with no interaction from them —
+ * possibly mid-form. This is the app's first background poller, so it is the
+ * first place that matters.
+ *
+ * Instead the caller gets a typed error and the hook stops polling. The user
+ * keeps whatever they were doing; the next request they actually initiate goes
+ * through authFetch and redirects properly.
+ */
+const activityFetch = async (
+  url: string,
+  options: RequestInit = {},
+  // Whether a 404 on this route means "the feature is switched off".
+  //
+  // True for every route whose only 404 is a missing route. NOT true for
+  // POST /activity/events/{id}/read, which also answers 404 for an id that is
+  // unknown, not visible to you, or your own action — reading that as "the
+  // feature is off" would let one bad row silence the whole bell.
+  { disabledOn404 = true }: { disabledOn404?: boolean } = {}
+) => {
+  const token = getToken();
+  if (!token) throw new ActivitySessionExpiredError();
+
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401) throw new ActivitySessionExpiredError();
+  // The routes only exist when the backend runs with ACTIVITY_FEED_ENABLED.
+  if (disabledOn404 && response.status === 404) throw new ActivityFeatureDisabledError();
+
+  return response;
+};
+
+export const fetchActivityFeed = async (
+  params: { limit?: number; before?: number } = {}
+): Promise<ActivityFeed> => {
+  const query = new URLSearchParams();
+  if (params.limit) query.set("limit", String(params.limit));
+  if (params.before) query.set("before", String(params.before));
+
+  const response = await activityFetch(`${API_BASE_URL}/activity?${query}`);
+  if (!response.ok) throw new Error("Failed to load activity");
+  return response.json();
+};
+
+export const fetchActivityUnreadCount = async (): Promise<ActivityUnreadCount> => {
+  const response = await activityFetch(`${API_BASE_URL}/activity/unread-count`);
+  if (!response.ok) throw new Error("Failed to load the unread count");
+  return response.json();
+};
+
+/**
+ * Mints a ticket for the SSE stream.
+ *
+ * Goes through activityFetch for the same reason the polls do: this runs in
+ * the background, on connect and on every reconnect, and a 401 from it must
+ * not throw the user at /login mid-session.
+ *
+ * The ticket is single-use with a short TTL, so a caller must mint a fresh one
+ * per connection attempt and never cache one.
+ */
+export const fetchActivityStreamTicket = async (): Promise<ActivityStreamTicket> => {
+  const response = await activityFetch(`${API_BASE_URL}/activity/stream-ticket`, {
+    method: "POST",
+  });
+  if (!response.ok) throw new Error("Failed to open the activity stream");
+  return response.json();
+};
+
+/**
+ * The URL EventSource connects to.
+ *
+ * The ticket travels in the query string because EventSource cannot set
+ * headers — which is also why it is a ticket and not the JWT: a query string
+ * ends up in access logs and browser history, and a ticket that leaks there is
+ * already spent and expired.
+ */
+export const activityStreamUrl = (ticket: string): string =>
+  `${API_BASE_URL}/activity/stream?ticket=${encodeURIComponent(ticket)}`;
+
+/**
+ * Mark exactly one event read.
+ *
+ * Read state is per event, so the row is named in the path and there is no
+ * body: a request with no body cannot be half-decoded into the wrong event.
+ * Idempotent — marking an already-read row read again is a 204.
+ *
+ * A 404 here means the id is unknown, not visible to this user, or their own
+ * action. That is a bad row, not a switched-off feature, so it is deliberately
+ * NOT mapped to ActivityFeatureDisabledError (which would hide the bell).
+ */
+export const markActivityEventRead = async (eventId: string): Promise<void> => {
+  const response = await activityFetch(
+    `${API_BASE_URL}/activity/events/${encodeURIComponent(eventId)}/read`,
+    { method: "POST" },
+    { disabledOn404: false }
+  );
+  if (!response.ok) throw new Error("Failed to mark activity as read");
+};
+
+/**
+ * Clear the badge in one call. No body, idempotent, 204.
+ *
+ * Its only 404 is a missing route, so the default mapping applies.
+ */
+export const markAllActivityRead = async (): Promise<void> => {
+  const response = await activityFetch(`${API_BASE_URL}/activity/read-all`, {
+    method: "POST",
+  });
+  if (!response.ok) throw new Error("Failed to mark all activity as read");
 };

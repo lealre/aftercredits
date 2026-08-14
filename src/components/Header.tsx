@@ -1,6 +1,6 @@
-import { Film, LogOut, Users, User, ChevronDown } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Button } from './ui/button';
+import { Film, LogOut, Users, User, ChevronDown } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,11 +8,12 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from './ui/dropdown-menu';
-import { useQueryClient } from '@tanstack/react-query';
-import { getToken, clearToken } from '@/services/authService';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { useToast } from '@/hooks/use-toast';
+} from "./ui/dropdown-menu";
+import { useQueryClient } from "@tanstack/react-query";
+import { getToken, clearToken } from "@/services/authService";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useToast } from "@/hooks/use-toast";
+import { ActivityBell } from "./ActivityBell";
 
 export interface HeaderProps {}
 
@@ -45,11 +46,11 @@ export const Header = () => {
     if (userData?.email) {
       return userData.email.charAt(0).toUpperCase();
     }
-    return 'U';
+    return "U";
   };
 
   const getUserDisplayName = () => {
-    return userData?.name || userData?.username || userData?.email || 'User';
+    return userData?.name || userData?.username || userData?.email || "User";
   };
 
   const isActive = (path: string) => {
@@ -64,74 +65,84 @@ export const Header = () => {
             {/* Logo placeholder - replace with actual logo image in the future */}
             <Film className="w-8 h-8 text-movie-gold" />
             <div>
-              <h1 className="text-2xl font-bold text-movie-gold">AfterCredits</h1>
+              <h1 className="text-2xl font-bold text-movie-gold">
+                AfterCredits
+              </h1>
             </div>
           </div>
 
           {token && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="relative h-10 w-10 rounded-full border-2 border-movie-blue/30 bg-movie-surface hover:bg-movie-surface/80 focus:outline-none focus:ring-2 focus:ring-movie-blue focus:ring-offset-2 p-0"
-                  disabled={loadingUser}
-                >
-                  {userData?.avatarUrl ? (
-                    <img
-                      src={userData.avatarUrl}
-                      alt={getUserDisplayName()}
-                      className="h-full w-full rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full w-full rounded-full bg-movie-blue flex items-center justify-center text-movie-blue-foreground font-semibold text-sm">
-                      {loadingUser ? '...' : getUserInitial()}
-                    </div>
-                  )}
-                  <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-movie-blue border-2 border-movie-surface flex items-center justify-center">
-                    <ChevronDown className="h-2 w-2 text-movie-blue-foreground" />
-                  </div>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount>
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{getUserDisplayName()}</p>
-                    {userData?.email && (
-                      <p className="text-xs leading-none text-muted-foreground">
-                        {userData.email}
-                      </p>
+            <div className="flex items-center gap-2">
+              <ActivityBell />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="relative h-10 w-10 rounded-full border-2 border-movie-blue/30 bg-movie-surface hover:bg-movie-surface/80 focus:outline-none focus:ring-2 focus:ring-movie-blue focus:ring-offset-2 p-0"
+                    disabled={loadingUser}
+                  >
+                    {userData?.avatarUrl ? (
+                      <img
+                        src={userData.avatarUrl}
+                        alt={getUserDisplayName()}
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full rounded-full bg-movie-blue flex items-center justify-center text-movie-blue-foreground font-semibold text-sm">
+                        {loadingUser ? "..." : getUserInitial()}
+                      </div>
                     )}
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => navigate('/watchlist')}
-                  className={isActive('/watchlist') ? 'bg-accent' : ''}
-                >
-                  <Film className="mr-2 h-4 w-4" />
-                  <span>Watchlist</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => navigate('/groups')}
-                  className={isActive('/groups') ? 'bg-accent' : ''}
-                >
-                  <Users className="mr-2 h-4 w-4" />
-                  <span>Groups</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => navigate('/account')}
-                  className={isActive('/account') ? 'bg-accent' : ''}
-                >
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Account</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Logout</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-movie-blue border-2 border-movie-surface flex items-center justify-center">
+                      <ChevronDown className="h-2 w-2 text-movie-blue-foreground" />
+                    </div>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">
+                        {getUserDisplayName()}
+                      </p>
+                      {userData?.email && (
+                        <p className="text-xs leading-none text-muted-foreground">
+                          {userData.email}
+                        </p>
+                      )}
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => navigate("/watchlist")}
+                    className={isActive("/watchlist") ? "bg-accent" : ""}
+                  >
+                    <Film className="mr-2 h-4 w-4" />
+                    <span>Watchlist</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => navigate("/groups")}
+                    className={isActive("/groups") ? "bg-accent" : ""}
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    <span>Groups</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => navigate("/account")}
+                    className={isActive("/account") ? "bg-accent" : ""}
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    <span>Account</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Logout</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
       </div>

@@ -152,6 +152,26 @@ export interface GroupResponse {
   updatedAt: string;
 }
 
+/**
+ * Thrown when GET /groups/{groupId}/titles/{titleId} answers 404.
+ *
+ * The backend gives one deliberately indistinguishable 404 for every way that
+ * read can fail — unknown group, deleted group, caller not a member, unknown
+ * title, title not in that group — so this means exactly "you cannot see that
+ * title in that group" and nothing more precise. There is no message worth
+ * showing either, which is why this carries none of the body.
+ *
+ * A distinct type because this 404 is an expected answer rather than a fault:
+ * the activity feed links to titles that may have been removed since the event,
+ * so the caller shows a toast instead of an error state.
+ */
+export class TitleNotInGroupError extends Error {
+  constructor() {
+    super('That title is not in that group');
+    this.name = 'TitleNotInGroupError';
+  }
+}
+
 /** Search result item from GET /titles/search */
 export interface SearchTitle {
   id: string;

@@ -38,6 +38,7 @@ import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, deleteRating
 import { getUserId } from '@/services/authService';
 import { useActiveGroupId } from '@/hooks/useActiveGroupId';
 import { useEpisodes } from '@/hooks/useEpisodes';
+import { normalizeNote } from '@/lib/rating';
 
 interface MovieModalProps {
   movie: Movie;
@@ -146,18 +147,30 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     }
   }, [isOpen, movie.watched, movie.watchedAt]);
 
+  /**
+   * The one place a user-typed note enters this component's state.
+   *
+   * Normalizing here rather than at save time is deliberate: it makes the value
+   * on screen the value that will be sent. `step="0.1"` on the input below is
+   * only a browser hint — it is validated on form submission, which this
+   * free-standing input never does — so typing `8.55` used to reach the backend
+   * untouched and now earns a 400 (ErrNoteTooPrecise). Clamping and rounding at
+   * the point of capture means the UI simply cannot hold a note the backend
+   * would refuse, in either the editing or the committed branch below.
+   */
   const updateUserRating = (userId: string, rating: number) => {
+    const note = normalizeNote(rating);
     if (editingUserId === userId) {
       // Update temporary rating when editing this specific user
       setTempUserRatings(prev => ({
         ...prev,
-        [userId]: { rating }
+        [userId]: { rating: note }
       }));
     } else {
       // Update actual ratings when not editing (shouldn't happen, but keep for safety)
       setUserRatings(prev => ({
         ...prev,
-        [userId]: { rating }
+        [userId]: { rating: note }
       }));
     }
   };
@@ -421,9 +434,18 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       onClose();
     } catch (error) {
       console.error('Error saving:', error);
+      // saveRating/updateRating already unwrap the backend's `errorMessage` and
+      // rethrow it as the Error message — this used to throw that away and show
+      // a generic line instead, so a rejected note (ErrNoteTooPrecise,
+      // ErrInvalidNoteValue, a season conflict) looked like an unexplained
+      // failure. Say what the backend said, and keep the generic line as the
+      // fallback for something that is not an Error.
       toast({
         title: "Error saving",
-        description: "Failed to save changes. Please try again.",
+        description:
+          error instanceof Error && error.message
+            ? error.message
+            : "Failed to save changes. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -732,8 +754,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                     return;
                                   }
                                   const value = parseFloat(inputValue);
+                                  // NaN only for a part-typed value like "-";
+                                  // ignoring it leaves what was there rather
+                                  // than wiping it. Everything else is clamped
+                                  // and rounded by updateUserRating.
                                   if (!isNaN(value)) {
-                                    updateUserRating(user.id, Math.min(10, Math.max(0, value)));
+                                    updateUserRating(user.id, value);
                                   }
                                 }}
                                 className="w-20 bg-movie-surface border-border text-sm"
