@@ -11,13 +11,35 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { saveGroupId } from '@/services/authService';
 import { useActivityUnreadCount, useActivityFeedPanel } from '@/hooks/useActivityFeed';
 import { activityTimeAgo, describeActivity, describeActivityText } from '@/lib/activityText';
 import { ActivityEvent } from '@/types/activity';
 
 /** Badge caps out rather than widening the bell for a big number. */
 const BADGE_MAX = 9;
+
+/**
+ * The title this row can offer to open, or null when it cannot offer at all.
+ *
+ * Two kinds of row have no openable title, and for both of them a button would
+ * be an affordance that predictably does nothing:
+ *
+ * - **`title_removed`** — the event's entire meaning is that the title has left
+ *   that group, so the read behind the modal can only ever 404. Showing the
+ *   control and then apologising with a toast is worse than not showing it.
+ * - **anything with no `titleId`** — group-level events. The DTO already allows
+ *   null (the backend does not emit any such kind yet, and the planned group
+ *   and member kinds will), and there is simply no title to name in the URL.
+ *   Treating it the same way means a new kind degrades quietly instead of
+ *   linking to `/watchlist?group=…&title=null`.
+ *
+ * Every other kind is about a title that was in the group when the event was
+ * written, and any of those may of course have been removed since — that is the
+ * 404 the watchlist page handles with a toast. This is only about the rows that
+ * are knowably dead *before* the click.
+ */
+const openableTitleId = (event: ActivityEvent): string | null =>
+  event.kind === 'title_removed' ? null : event.titleId;
 
 /**
  * The activity bell: an unread badge in the header, and a panel listing what
@@ -96,21 +118,32 @@ export const ActivityBell = () => {
   };
 
   /**
-   * The row's other action: go and look at the title.
+   * The row's other action: open that title's modal.
    *
-   * There is no per-title route in this app, so this does what selecting a
-   * group on /groups does — switch the active group and show its watchlist,
-   * which is where the title is. Unlike the row itself this one DOES dismiss
-   * the panel (the default select behaviour), because it navigates away and a
-   * menu left hanging over the new page would have to be dismissed by hand.
+   * The link names the event's **own** group, never the active one. The feed
+   * spans every group the reader is in, so most rows are about a group the app
+   * is not currently pointing at, and the modal shows group-scoped ratings and
+   * comments — assuming the active group here would open the right title under
+   * the wrong group's data.
+   *
+   * The group switch itself is deliberately *not* done here. /watchlist reads
+   * both params and owns the whole sequence: switch first, then fetch, then
+   * open. One owner means the switch and the open cannot disagree, it lets the
+   * page refuse a group the reader has since left rather than stranding the app
+   * in it, and it makes a pasted or bookmarked URL behave exactly like a click.
+   *
+   * Unlike the row itself this one DOES dismiss the panel (the default select
+   * behaviour), because it navigates away and a menu left hanging over the new
+   * page would have to be dismissed by hand.
    *
    * It also marks the row read: opening something is at least as strong a
    * signal of having seen it as clicking it.
    */
-  const openTitle = (event: ActivityEvent) => {
+  const openTitle = (event: ActivityEvent, titleId: string) => {
     markRead(event.id);
-    saveGroupId(event.groupId);
-    navigate('/watchlist');
+    navigate(
+      `/watchlist?group=${encodeURIComponent(event.groupId)}&title=${encodeURIComponent(titleId)}`
+    );
   };
 
   return (
@@ -196,6 +229,7 @@ export const ActivityBell = () => {
               // Unread is per event now: the row's own flag, never "the newest
               // N rows" inferred from a count and a list position.
               const unreadRow = !event.read;
+              const openableId = openableTitleId(event);
               return (
                 <div
                   key={event.id}
@@ -267,14 +301,38 @@ export const ActivityBell = () => {
                     bug this file just fixed. As a sibling item it sits in the
                     same roving focus group, so ArrowDown steps row → open →
                     next row and the affordance is keyboard-reachable.
+
+                    Rendered conditionally (see openableTitleId), which makes
+                    that sequence uneven — some rows step row → row instead. That
+                    is safe, and specifically it cannot strand focus:
+
+                    - Radix's roving focus walks whatever items are mounted, in
+                      document order. It counts nothing and assumes no shape, so
+                      a row contributing one item instead of two is just a
+                      shorter walk. Home/End and typeahead work off the same
+                      collection.
+                    - Focus is never taken out from under the user, because
+                      whether this item exists is a pure function of `kind` and
+                      `titleId`, and neither can change on an event that is
+                      already rendered. Only `read` ever changes, and it only
+                      repaints. Live events are prepended, which mounts items but
+                      unmounts none.
+                    - Nothing else is skipped: the row's own item is always
+                      present, so every event stays reachable and readable, and
+                      its aria-label already carries the whole sentence.
+
+                    The row's item is `flex-1`, so the space simply closes up
+                    rather than leaving a hole where the button would be.
                   */}
-                  <DropdownMenuItem
-                    onSelect={() => openTitle(event)}
-                    aria-label={`Open ${event.titleName ? `${event.titleName} in ` : ''}${event.groupName}`}
-                    className="shrink-0 self-center px-2 py-2 text-muted-foreground focus:bg-movie-surface-hover focus:text-foreground"
-                  >
-                    <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-                  </DropdownMenuItem>
+                  {openableId !== null && (
+                    <DropdownMenuItem
+                      onSelect={() => openTitle(event, openableId)}
+                      aria-label={`Open ${event.titleName ? `${event.titleName} in ` : ''}${event.groupName}`}
+                      className="shrink-0 self-center px-2 py-2 text-muted-foreground focus:bg-movie-surface-hover focus:text-foreground"
+                    >
+                      <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                    </DropdownMenuItem>
+                  )}
                 </div>
               );
             })}
