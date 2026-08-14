@@ -94,3 +94,43 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /**
+   * A thin, subtle scrollbar for panels that scroll inside the app's own
+   * surfaces, where the OS default is a bright slab against a dark panel.
+   *
+   * Written in CSS rather than pulled in as a plugin: no scrollbar package is a
+   * dependency here and this is a dozen lines. Both the standard properties
+   * (Firefox) and the WebKit pseudo-elements are set, since neither is
+   * supported everywhere. Colours come from the theme tokens, so it follows
+   * light and dark without a second rule, and only the *scrollbar* is styled —
+   * scrolling, focus and keyboard behaviour are untouched.
+   */
+  .scrollbar-subtle {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+
+  .scrollbar-subtle::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-subtle::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-subtle::-webkit-scrollbar-thumb {
+    /* The transparent border plus content-box clipping is what makes the thumb
+       read as a slim pill with breathing room, instead of an 8px bar. */
+    background-color: hsl(var(--muted-foreground) / 0.35);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .scrollbar-subtle:hover::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.55);
+  }
+}

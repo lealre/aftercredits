@@ -37,11 +37,21 @@ export const ActivityBell = () => {
     loadMore,
     isLoadingMore,
     markRead,
+    markAllRead,
+    canMarkAllRead,
     reset,
   } = useActivityFeedPanel(open);
 
   if (unavailable) return null;
 
+  /**
+   * Opening the panel loads the feed and nothing else — deliberately.
+   *
+   * Marking things read on open would clear activity the user never actually
+   * looked at, and with a single watermark that loss is not recoverable. Read
+   * state only ever moves because of a click: on a row, or on "mark all as
+   * read".
+   */
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
     if (!next) reset();
@@ -92,11 +102,32 @@ export const ActivityBell = () => {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent className="w-80" align="end">
-        <DropdownMenuLabel className="font-normal">
-          <p className="text-sm font-medium leading-none">Activity</p>
-          <p className="text-xs leading-none text-muted-foreground mt-1">
-            What others in your groups have been up to
-          </p>
+        <DropdownMenuLabel className="font-normal flex items-start justify-between gap-2">
+          <span className="min-w-0">
+            <span className="block text-sm font-medium leading-none">Activity</span>
+            <span className="block text-xs leading-none text-muted-foreground mt-1">
+              What others in your groups have been up to
+            </span>
+          </span>
+          {/*
+            Explicit, and the only bulk way read state moves. Disabled rather
+            than hidden so the panel's header does not change shape as the count
+            drops to zero. The badge updates on the click, not on the response —
+            the mutation writes the new count optimistically.
+          */}
+          <button
+            type="button"
+            onClick={(event) => {
+              // Keep the panel open: this is not a menu item, and dismissing it
+              // would hide the rows the user just chose to keep looking at.
+              event.preventDefault();
+              markAllRead();
+            }}
+            disabled={unread === 0 || !canMarkAllRead}
+            className="shrink-0 rounded-sm px-1 py-0.5 text-xs font-normal text-muted-foreground hover:text-foreground hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-movie-blue disabled:pointer-events-none disabled:opacity-40"
+          >
+            Mark all as read
+          </button>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
@@ -121,7 +152,14 @@ export const ActivityBell = () => {
         )}
 
         {events.length > 0 && (
-          <div className="max-h-80 overflow-y-auto">
+          <div
+            // Focusable, so the list can be scrolled with the arrow keys by
+            // someone not using a pointer — a scrollable region only a mouse
+            // can reach is not reachable.
+            tabIndex={0}
+            aria-label="Recent activity"
+            className="max-h-80 overflow-y-auto scrollbar-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-movie-blue rounded-sm"
+          >
             {events.map((event, index) => {
               const unreadRow = isUnread(index);
               return (
@@ -130,7 +168,13 @@ export const ActivityBell = () => {
                   type="button"
                   onClick={() => openEvent(event)}
                   aria-label={`${describeActivityText(event)}${unreadRow ? ' (unread)' : ''}`}
-                  className="w-full text-left flex items-start gap-2 px-2 py-2 rounded-sm hover:bg-accent focus:bg-accent focus:outline-none"
+                  // NOT hover:bg-accent: --accent is this theme's warm golden,
+                  // paired with a near-black --accent-foreground the row's text
+                  // does not adopt, so hovering used to put light text on amber.
+                  // --movie-surface-hover is the app's own surface token for
+                  // exactly this, and it is defined in both themes, so the
+                  // foreground tokens below stay readable against it either way.
+                  className="group w-full text-left flex items-start gap-2 px-2 py-2 rounded-sm hover:bg-movie-surface-hover focus:bg-movie-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-movie-blue"
                 >
                   {/* The dot keeps its column on read rows too, so lines don't shift. */}
                   <span
@@ -142,7 +186,12 @@ export const ActivityBell = () => {
                   <span className="min-w-0">
                     <span
                       className={`block text-sm leading-snug ${
-                        unreadRow ? 'text-foreground font-medium' : 'text-muted-foreground'
+                        unreadRow
+                          ? 'text-foreground font-medium'
+                          : // A read row is dimmed until it is hovered or
+                            // focused, where it comes up to full contrast
+                            // rather than staying grey on a lighter surface.
+                            'text-muted-foreground group-hover:text-foreground group-focus:text-foreground'
                       }`}
                     >
                       {describeActivity(event).map((segment, i) =>
@@ -150,13 +199,15 @@ export const ActivityBell = () => {
                           <span key={i}>{segment}</span>
                         ) : (
                           // The title is italic so it reads as a distinct thing
-                          // inside the sentence. Its colour follows the row's
-                          // read state rather than being fixed, so a read row
-                          // stays uniformly dimmed.
-                          <em
-                            key={i}
-                            className={`italic ${unreadRow ? 'text-movie-gold' : ''}`}
-                          >
+                          // inside the sentence, and takes no colour of its own:
+                          // it inherits the row's, so a read row stays uniformly
+                          // dimmed and a hovered one comes up with the rest of
+                          // the line. (This carried `text-movie-gold`, which no
+                          // theme defines — see tailwind.config.ts — so it was
+                          // already inheriting. Left inheriting on purpose: a
+                          // golden italic would sit at roughly 2:1 against the
+                          // light theme's hover surface.)
+                          <em key={i} className="italic">
                             {segment.title}
                           </em>
                         )
@@ -176,7 +227,9 @@ export const ActivityBell = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full"
+                  // Ghost's own hover is bg-accent too; same reasoning as the
+                  // rows above, so the whole panel hovers consistently.
+                  className="w-full hover:bg-movie-surface-hover hover:text-foreground"
                   disabled={isLoadingMore}
                   onClick={(e) => {
                     // Keep the panel open while paging.

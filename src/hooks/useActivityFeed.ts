@@ -164,6 +164,12 @@ export const useActivityUnreadCount = () => {
  * older than S read too — "read" is a boundary, not a set. Clicking a row
  * therefore means "I have seen this and everything below it", which is what the
  * ordering makes natural anyway.
+ *
+ * Nothing here advances the watermark as a side effect of *reading* the feed.
+ * Opening the panel runs the query below and nothing else; the only calls to
+ * POST /activity/read are the two the user asks for by clicking (a row, or
+ * "mark all as read"). GET /activity does not move the watermark either, so an
+ * unopened event stays unread until it is actually acted on.
  */
 export const useActivityFeedPanel = (open: boolean) => {
   const token = getToken();
@@ -185,21 +191,56 @@ export const useActivityFeedPanel = (open: boolean) => {
     onSuccess: (page) => setPages((prev) => [...prev, page]),
   });
 
-  const markRead = useMutation({
-    mutationFn: markActivityRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ACTIVITY_UNREAD_COUNT_KEY });
-    },
-  });
-
   const events = [
     ...(first.data?.events ?? []),
     ...pages.flatMap((page) => page.events),
   ];
 
+  // Read by the mutation below, which runs outside render and must see the list
+  // as it is at click time rather than as it was when the mutation was created.
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
+
+  const markRead = useMutation({
+    mutationFn: markActivityRead,
+    // The badge has to move on the click, not a round trip later, and the count
+    // after moving the watermark to S is knowable here: it is the number of
+    // still-unread rows newer than S. The feed is newest-first and complete
+    // from the top, so every event newer than S is already loaded — nothing
+    // unloaded can be newer than a row the user just clicked.
+    //
+    // Clamped by the current count because the watermark only ever moves
+    // forward (the backend upserts with GREATEST): clicking an already-read row
+    // is a no-op server-side, and must not *raise* the badge here either.
+    onMutate: (seq: number) => {
+      queryClient.setQueryData<ActivityUnreadCount>(ACTIVITY_UNREAD_COUNT_KEY, (count) => {
+        if (!count) return count;
+        const newer = eventsRef.current.filter((event) => event.seq > seq).length;
+        return { unread: Math.min(count.unread, newer) };
+      });
+    },
+    // On success it confirms the optimistic value; on failure it puts the real
+    // one back, so a rejected write cannot leave the badge lying.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ACTIVITY_UNREAD_COUNT_KEY });
+    },
+  });
+
   const last = pages.length > 0 ? pages[pages.length - 1] : first.data;
 
   const reset = useCallback(() => setPages([]), []);
+
+  /**
+   * Mark everything read.
+   *
+   * One watermark means this is just "mark the newest event read": the newest
+   * loaded event is the newest that exists for this user (the first page is the
+   * head of the log), so moving the watermark there covers the whole feed.
+   */
+  const markAllRead = () => {
+    const newest = eventsRef.current[0];
+    if (newest) markRead.mutate(newest.seq);
+  };
 
   return {
     events,
@@ -210,6 +251,9 @@ export const useActivityFeedPanel = (open: boolean) => {
     loadMore: (before: number) => loadMore.mutate(before),
     isLoadingMore: loadMore.isPending,
     markRead: (seq: number) => markRead.mutate(seq),
+    markAllRead,
+    /** No event loaded means there is nothing whose seq we could mark read. */
+    canMarkAllRead: events.length > 0,
     reset,
   };
 };
