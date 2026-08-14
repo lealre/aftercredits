@@ -11,6 +11,7 @@ import {
   GroupResponse,
   SearchTitle,
   Episode,
+  TitleNotInGroupError,
 } from "@/types/movie";
 import {
   getToken,
@@ -263,6 +264,67 @@ export const fetchMovies = async (
     console.error("Error fetching movies:", error);
     throw error;
   }
+};
+
+/**
+ * One group's view of one title — the same object GET /groups/{id}/titles
+ * returns inside its `Content`, unwrapped.
+ *
+ * It exists because that list is paginated: a client holding only a title id
+ * (the activity feed, deep-linking a row to that title's modal) cannot count on
+ * the entry being on whichever page the grid happens to be showing. The backend
+ * builds it through the same assembly as the list, so the result is safe to
+ * feed to anything that renders a list entry.
+ *
+ * ## Why authFetch and not activityFetch
+ *
+ * Both distinctions matter here:
+ *
+ * - This is a `/groups` route, served whether or not the backend runs with the
+ *   activity feed switched on. Its 404 is a real, expected answer about one
+ *   title — mapping it to ActivityFeatureDisabledError the way the activity
+ *   routes do would be the "every 404 means the feature is off" bug all over
+ *   again, and would hide the whole bell over one removed film.
+ * - It is called from a click, not a background poll. activityFetch declines to
+ *   redirect on 401 precisely because a poll must not eject a user mid-session;
+ *   a 401 on something the user just asked for *should* land them on /login,
+ *   which is what authFetch does.
+ *
+ * `groupRatings` is null rather than [] when the group has rated nothing, so it
+ * is normalized to an array here — every consumer downstream takes a list.
+ */
+export const fetchGroupTitle = async (
+  groupId: string,
+  titleId: string
+): Promise<{ movie: Movie; ratings: Rating[] }> => {
+  const response = await authFetch(
+    `${API_BASE_URL}/groups/${encodeURIComponent(groupId)}/titles/${encodeURIComponent(titleId)}`
+  );
+
+  // Answered before the body is read: every 404 from this route carries the same
+  // uninformative message by design, so there is nothing in it to surface.
+  if (response.status === 404) {
+    throw new TitleNotInGroupError();
+  }
+
+  if (!response.ok) {
+    let message = "Failed to load the title";
+    try {
+      const errorData: ErrorResponse = await response.json();
+      message = errorData.errorMessage || message;
+    } catch {
+      // A body that will not parse is not worth failing differently over.
+    }
+    console.error("Error fetching group title:", response.status, message);
+    throw new Error(message);
+  }
+
+  const data: BackendMovie = await response.json();
+
+  return {
+    movie: mapBackendMovieToMovie(data),
+    ratings: data.groupRatings ?? [],
+  };
 };
 
 export const addMovieToBackend = async (
