@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Movie, User, Rating, SeasonRating } from '@/types/movie';
 import {
   Dialog,
@@ -38,6 +38,9 @@ import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, deleteRating
 import { getUserId } from '@/services/authService';
 import { useActiveGroupId } from '@/hooks/useActiveGroupId';
 import { useEpisodes } from '@/hooks/useEpisodes';
+import { useStagedTitleEdits } from '@/hooks/useStagedTitleEdits';
+import { TITLE_SCOPE, seasonScope, type ScopeKey } from '@/lib/stagedEdits';
+import type { ScopeBaseline } from '@/lib/flushPlan';
 import { normalizeNote } from '@/lib/rating';
 
 interface MovieModalProps {
@@ -68,12 +71,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const { data: episodes = [], isLoading: episodesLoading, isError: episodesError } = useEpisodes(movie.imdbId, isOpen && isTVSeries);
 
   const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
-  // Initialize watched state directly from movie prop - update only when modal opens with new movie
-  const [watched, setWatched] = useState(() => movie.watched || false);
-  const [watchedAt, setWatchedAt] = useState(() => movie.watchedAt || '');
   const [selectedSeason, setSelectedSeason] = useState<string>('');
-  const [isEditingWatchedAt, setIsEditingWatchedAt] = useState(false);
-  const [tempWatchedAt, setTempWatchedAt] = useState(''); // Temporary date while editing
   const [editingUserId, setEditingUserId] = useState<string | null>(null); // Track which user's rating is being edited
   const [tempUserRatings, setTempUserRatings] = useState<Record<string, { rating: number }>>({}); // Temporary ratings while editing
   const [deletingRatingId, setDeletingRatingId] = useState<string | null>(null); // Track which rating is being deleted
@@ -82,70 +80,78 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  // Track the movie ID to detect when it changes
-  const [lastMovieId, setLastMovieId] = useState<string | null>(null);
-  
-  // Sync watched state only when modal opens with a specific movie
-  useEffect(() => {
-    if (isOpen) {
-      const isNewMovie = lastMovieId !== movie.id;
-      
-      if (isTVSeries && movie.seasons && movie.seasons.length > 0) {
-        // Only reset season selection when opening modal for a new movie
-        if (isNewMovie) {
-          const firstSeason = movie.seasons[0].season;
-          setSelectedSeason(firstSeason);
-          setLastMovieId(movie.id);
-        }
-        
-        // Update watched state for the current season (always update, even if season didn't change)
-        const seasonToUse = selectedSeason || movie.seasons[0].season;
-        const seasonWatched = movie.seasonsWatched?.[seasonToUse];
-        setWatched(seasonWatched?.watched ?? false);
-        setWatchedAt(seasonWatched?.watchedAt ?? '');
-      } else {
-        if (isNewMovie) {
-          setSelectedSeason('');
-          setLastMovieId(movie.id);
-        }
-        setWatched(movie.watched || false);
-        setWatchedAt(movie.watchedAt || '');
-      }
-    } else {
-      // Reset when modal closes
-      setLastMovieId(null);
-    }
-  }, [isOpen, movie.id, movie.watched, movie.watchedAt, movie.seasonsWatched, isTVSeries, movie.seasons, selectedSeason, lastMovieId]); // Sync when modal opens or movie changes
 
-  // When user changes season, update watched state to reflect that season (TV series only)
+  // Reset which season is shown each time the modal opens. `movie.id` is
+  // stable for the lifetime of a MovieCard's modal instance (one card, one
+  // title), so this only needs to react to the open transition — not to
+  // `movie.seasons`, whose array identity can change on every refetch and
+  // would otherwise stomp a season the user had already picked.
   useEffect(() => {
     if (!isOpen) return;
-    if (!isTVSeries) return;
-    if (!selectedSeason) return;
+    if (isTVSeries && movie.seasons && movie.seasons.length > 0) {
+      setSelectedSeason(movie.seasons[0].season);
+    } else {
+      setSelectedSeason('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
-    const seasonWatched = movie.seasonsWatched?.[selectedSeason];
-    setWatched(seasonWatched?.watched ?? false);
-    setWatchedAt(seasonWatched?.watchedAt ?? '');
-    setIsEditingWatchedAt(false);
-    setTempWatchedAt('');
-    // Reset rating editing state when season changes
-    setEditingUserId(null);
-    setTempUserRatings({});
-    setUserRatings({}); // Clear userRatings to reset state when season changes
-  }, [isOpen, isTVSeries, selectedSeason, movie.seasonsWatched]);
+  /**
+   * The scope backing whatever the modal currently shows: the title itself,
+   * or the selected season for a TV series. Every staged read/write below
+   * goes through this so switching seasons never touches another season's
+   * draft.
+   */
+  const visibleScope: ScopeKey = isTVSeries && selectedSeason ? seasonScope(selectedSeason) : TITLE_SCOPE;
 
+  /**
+   * Server-truth baselines, one per scope, derived from `movie` alone —
+   * never from local state. `planFlush` fills in the baseline for whichever
+   * half of the watched/watchedAt pair wasn't staged, so a stale baseline
+   * here would silently flush stale data while reporting success. `movie` is
+   * refetched after every save, which is what keeps this current.
+   */
+  const baselines = useMemo<Record<ScopeKey, ScopeBaseline>>(() => {
+    const map: Record<ScopeKey, ScopeBaseline> = {
+      [TITLE_SCOPE]: { watched: movie.watched ?? false, watchedAt: movie.watchedAt ?? '' },
+    };
+    for (const season of Object.keys(movie.seasonsWatched ?? {})) {
+      const seasonWatched = movie.seasonsWatched?.[season];
+      map[seasonScope(season)] = {
+        watched: seasonWatched?.watched ?? false,
+        watchedAt: seasonWatched?.watchedAt ?? '',
+      };
+    }
+    return map;
+  }, [movie.watched, movie.watchedAt, movie.seasonsWatched]);
+
+  const staged = useStagedTitleEdits({
+    groupId: currentGroupId,
+    titleId: movie.imdbId,
+    userId: currentUserId,
+    ratings,
+    baselines,
+  });
+
+  // The modal is permanently mounted (MovieCard toggles only the Radix
+  // dialog via `isOpen`), so without this an abandoned draft would survive
+  // being closed and still be flushable the next time the modal opens.
   useEffect(() => {
     if (!isOpen) {
-      // Reset state when modal closes - revert to original movie data
-      setUserRatings({});
-      setWatched(movie.watched || false);
-      setWatchedAt(movie.watchedAt || '');
-      setIsEditingWatchedAt(false);
-      setTempWatchedAt('');
-      setEditingUserId(null);
-      setTempUserRatings({});
+      staged.reset();
     }
-  }, [isOpen, movie.watched, movie.watchedAt]);
+    // `staged.reset` is a stable useCallback (empty deps); depending on the
+    // whole `staged` object would rerun this every render, since the hook
+    // returns a new object each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, staged.reset]);
+
+  const shownWatched = staged.isStaged(visibleScope, 'watched')
+    ? (staged.fieldValue(visibleScope, 'watched') as boolean)
+    : baselines[visibleScope]?.watched ?? false;
+  const shownWatchedAt = staged.isStaged(visibleScope, 'watchedAt')
+    ? (staged.fieldValue(visibleScope, 'watchedAt') as string)
+    : baselines[visibleScope]?.watchedAt ?? '';
 
   /**
    * The one place a user-typed note enters this component's state.
@@ -364,29 +370,17 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         setEditingUserId(null);
       }
       
-      // Commit temporary watched date if still editing and close editing state
-      if (isEditingWatchedAt) {
-        setWatchedAt(tempWatchedAt);
-        setIsEditingWatchedAt(false);
-      }
-
       // Clear local state after successful save
       setUserRatings({});
 
-      // Update watched status if it changed
-      // Use tempWatchedAt if still editing, otherwise use watchedAt
-      const currentWatchedAt = isEditingWatchedAt ? tempWatchedAt : watchedAt;
-      
-      const baselineWatched =
-        isTVSeries && selectedSeason
-          ? (movie.seasonsWatched?.[selectedSeason]?.watched ?? false)
-          : (movie.watched ?? false);
-      const baselineWatchedAt =
-        isTVSeries && selectedSeason
-          ? (movie.seasonsWatched?.[selectedSeason]?.watchedAt ?? '')
-          : (movie.watchedAt ?? '');
+      // Update watched status if it changed. `shownWatched`/`shownWatchedAt`
+      // already resolve to the staged value when one is staged, else the
+      // baseline, so this is unchanged in effect from before staging existed.
+      const currentWatchedAt = shownWatchedAt;
+      const baselineWatched = baselines[visibleScope]?.watched ?? false;
+      const baselineWatchedAt = baselines[visibleScope]?.watchedAt ?? '';
 
-      if (watched !== baselineWatched || currentWatchedAt !== baselineWatchedAt) {
+      if (shownWatched !== baselineWatched || currentWatchedAt !== baselineWatchedAt) {
         const groupId = currentGroupId;
         if (!groupId) {
           toast({
@@ -399,8 +393,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         }
         // For TV series, send the selected season; for movies, don't send season
         const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
-        await updateMovieWatchedStatus(groupId, movie.imdbId, watched, currentWatchedAt || '', season);
-        
+        await updateMovieWatchedStatus(groupId, movie.imdbId, shownWatched, currentWatchedAt || '', season);
+
         // Refresh movies to get the latest data from backend
         if (onRefreshMovies) {
           await onRefreshMovies();
@@ -408,20 +402,19 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       }
 
       // Save movie updates locally
-      // Use tempWatchedAt if still editing, otherwise use watchedAt
-      const finalWatchedAt = isEditingWatchedAt ? tempWatchedAt : watchedAt;
-      
+      const finalWatchedAt = shownWatchedAt;
+
       const updates: Partial<Movie> = {};
       if (isTVSeries && selectedSeason) {
         updates.seasonsWatched = {
           ...(movie.seasonsWatched || {}),
           [selectedSeason]: {
-            watched,
+            watched: shownWatched,
             watchedAt: finalWatchedAt || undefined,
           },
         };
       } else {
-        updates.watched = watched;
+        updates.watched = shownWatched;
         updates.watchedAt = finalWatchedAt || '';
       }
       
@@ -501,10 +494,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     setShowDeleteModal(false);
   };
 
-  const handleDeleteWatchedDate = async () => {
-    // Only update local state; persist on Save
-    setWatchedAt('');
-    setIsEditingWatchedAt(false);
+  const handleDeleteWatchedDate = () => {
+    // Stages a cleared date; nothing is persisted until Save.
+    staged.stage(visibleScope, 'watchedAt', '', baselines[visibleScope]?.watchedAt ?? '');
   };
 
   return (
@@ -655,78 +647,56 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               <div className="flex items-center space-x-2">
                 <Switch
                   id="watched"
-                  checked={watched}
-                  onCheckedChange={setWatched}
+                  checked={shownWatched}
+                  onCheckedChange={(next) =>
+                    staged.stage(visibleScope, 'watched', next, baselines[visibleScope]?.watched ?? false)
+                  }
                 />
                 <Label htmlFor="watched">Watched</Label>
+                {staged.isStaged(visibleScope, 'watched') && (
+                  <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                )}
               </div>
-              
-              {/* Watched Date */}
-              {watched && (
+
+              {/*
+                Gated on the *effective* (staged-or-baseline) value, not the raw
+                staged one: `updateMovieWatchedStatus` force-blanks `watchedAt`
+                whenever `watched` is false, so a staged date paired with an
+                unwatched state would flush as watched=false and silently drop
+                the date. Hiding the control here is what keeps that unreachable.
+              */}
+              {shownWatched && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-sm text-muted-foreground">Watched on:</Label>
-                    <div className="flex items-center space-x-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          if (!isEditingWatchedAt) {
-                            setTempWatchedAt(watchedAt);
-                          }
-                          setIsEditingWatchedAt(!isEditingWatchedAt);
-                        }}
-                        className="h-6 w-6 p-0"
-                      >
-                        <Edit3 className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleDeleteWatchedDate}
-                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                      >
-                        <XCircle className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    <Label className="text-sm text-muted-foreground flex items-center gap-1">
+                      Watched on:
+                      {staged.isStaged(visibleScope, 'watchedAt') && (
+                        <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                      )}
+                    </Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleDeleteWatchedDate}
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                    >
+                      <XCircle className="h-3 w-3" />
+                    </Button>
                   </div>
-                  
-                  {isEditingWatchedAt ? (
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        type="date"
-                        value={tempWatchedAt}
-                        onChange={(e) => setTempWatchedAt(e.target.value)}
-                        className="text-sm bg-movie-surface border-border text-foreground [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setWatchedAt(tempWatchedAt);
-                          setIsEditingWatchedAt(false);
-                        }}
-                        className="h-8 px-2"
-                      >
-                        <Check className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setTempWatchedAt(watchedAt);
-                          setIsEditingWatchedAt(false);
-                        }}
-                        className="h-8 px-2"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-foreground">
-                      {watchedAt ? new Date(watchedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'No date set'}
-                    </div>
-                  )}
+
+                  <Input
+                    type="date"
+                    value={shownWatchedAt}
+                    onChange={(e) =>
+                      staged.stage(
+                        visibleScope,
+                        'watchedAt',
+                        e.target.value,
+                        baselines[visibleScope]?.watchedAt ?? '',
+                      )
+                    }
+                    className="text-sm bg-movie-surface border-border text-foreground [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  />
                 </div>
               )}
             </div>
