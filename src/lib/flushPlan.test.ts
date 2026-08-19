@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { TITLE_SCOPE, seasonScope, type StagedState } from './stagedEdits';
-import { planFlush, type ScopeBaseline } from './flushPlan';
+import {
+  GENERIC_FLUSH_FAILURE_MESSAGE,
+  attributeOutcome,
+  findRatingToDelete,
+  planFlush,
+  type FlushItem,
+  type ScopeBaseline,
+} from './flushPlan';
+import type { Rating } from '@/types/movie';
 
 const S2 = seasonScope('2');
 const baselines: Record<string, ScopeBaseline> = {
@@ -66,5 +74,78 @@ describe('planFlush', () => {
 
   it('plans nothing for a clean state', () => {
     expect(planFlush({ drafts: {}, failures: [] }, baselines)).toEqual([]);
+  });
+});
+
+describe('attributeOutcome', () => {
+  const watchedItem: FlushItem = {
+    kind: 'watched',
+    scope: TITLE_SCOPE,
+    watched: true,
+    watchedAt: '2026-08-01',
+    fields: ['watched', 'watchedAt'],
+  };
+
+  it('fans a fulfilled outcome out across every field the item covers', () => {
+    const result = attributeOutcome(watchedItem, { status: 'fulfilled', value: undefined });
+    expect(result).toEqual({
+      succeeded: [
+        { scope: TITLE_SCOPE, field: 'watched' },
+        { scope: TITLE_SCOPE, field: 'watchedAt' },
+      ],
+      failed: [],
+    });
+  });
+
+  it('carries an Error rejection\'s own message onto every field', () => {
+    const result = attributeOutcome(watchedItem, {
+      status: 'rejected',
+      reason: new Error('note must have at most one decimal place'),
+    });
+    expect(result).toEqual({
+      succeeded: [],
+      failed: [
+        { scope: TITLE_SCOPE, field: 'watched', message: 'note must have at most one decimal place' },
+        { scope: TITLE_SCOPE, field: 'watchedAt', message: 'note must have at most one decimal place' },
+      ],
+    });
+  });
+
+  it('falls back to the generic message when the Error has no message', () => {
+    const result = attributeOutcome(
+      { kind: 'rating', scope: TITLE_SCOPE, note: 9, fields: ['rating'] },
+      { status: 'rejected', reason: new Error('') },
+    );
+    expect(result.failed).toEqual([
+      { scope: TITLE_SCOPE, field: 'rating', message: GENERIC_FLUSH_FAILURE_MESSAGE },
+    ]);
+  });
+
+  it('falls back to the generic message for a non-Error rejection', () => {
+    const result = attributeOutcome(
+      { kind: 'ratingDelete', scope: TITLE_SCOPE, fields: ['rating'] },
+      { status: 'rejected', reason: 'network exploded' },
+    );
+    expect(result.failed).toEqual([
+      { scope: TITLE_SCOPE, field: 'rating', message: GENERIC_FLUSH_FAILURE_MESSAGE },
+    ]);
+  });
+});
+
+describe('findRatingToDelete', () => {
+  const rating = (overrides: Partial<Rating>): Rating => ({
+    id: 'r1', titleId: 'tt1', userId: 'u1', groupId: 'g1', note: 8, ...overrides,
+  });
+
+  it('matches on (userId, titleId, groupId) together', () => {
+    const target = rating({ id: 'r-target' });
+    const found = findRatingToDelete([target], 'u1', 'tt1', 'g1');
+    expect(found).toBe(target);
+  });
+
+  it('does not match the same user and title in a different group', () => {
+    const otherGroup = rating({ id: 'r-other-group', groupId: 'g2' });
+    const found = findRatingToDelete([otherGroup], 'u1', 'tt1', 'g1');
+    expect(found).toBeUndefined();
   });
 });

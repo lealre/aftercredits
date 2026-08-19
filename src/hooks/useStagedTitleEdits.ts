@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useMemo, useReducer, useRef, useState } from 'react';
 import {
   deriveChanges,
   initialStagedState,
@@ -9,7 +9,13 @@ import {
   type ScopeKey,
   type StagedField,
 } from '@/lib/stagedEdits';
-import { planFlush, type FlushItem, type ScopeBaseline } from '@/lib/flushPlan';
+import {
+  attributeOutcome,
+  findRatingToDelete,
+  planFlush,
+  type FlushItem,
+  type ScopeBaseline,
+} from '@/lib/flushPlan';
 import {
   deleteRating,
   deleteRatingSeason,
@@ -27,37 +33,19 @@ type StageOverload = {
 type FlushResult = { ok: boolean; failed: FieldFailure[] };
 
 /**
- * One field failure per item field, for a settled outcome.
- *
- * `fields` is the whole point: an item's fields succeed or fail together as
- * one API call, but the caller needs per-field results to leave an unrelated
- * staged edit alone when its neighbour's save fails.
- */
-const attribute = (
-  item: FlushItem,
-  outcome: PromiseSettledResult<unknown>,
-): { succeeded: Array<{ scope: ScopeKey; field: StagedField }>; failed: FieldFailure[] } => {
-  if (outcome.status === 'fulfilled') {
-    return { succeeded: item.fields.map((field) => ({ scope: item.scope, field })), failed: [] };
-  }
-  const err = outcome.reason;
-  const message =
-    err instanceof Error && err.message ? err.message : 'Could not save this change. Please try again.';
-  return {
-    succeeded: [],
-    failed: item.fields.map((field) => ({ scope: item.scope, field, message })),
-  };
-};
-
-/**
  * Resolve which API call an item's `kind` maps to.
  *
- * `ratingDelete` needs the rating's id, which isn't in the plan (the plan is
- * pure and doesn't know about `Rating[]`) — it's looked up here by
- * `(userId, titleId, groupId)`, the same scoping `saveOrUpdateRating` already
- * uses, so a rating from a different group is never a match. A miss is a
- * settled failure, not a thrown error: the caller drives everything through
- * `allSettled`, and throwing here would take the rest of the batch down with it.
+ * A miss on `ratingDelete` is a settled failure, not a thrown error: the
+ * caller drives everything through `allSettled`, and throwing here would take
+ * the rest of the batch down with it.
+ *
+ * The `default` branch is an exhaustiveness guard, not dead code. `strict` is
+ * off in this project's tsconfig, so a missed case here would otherwise
+ * compile, fall through, return `undefined`, and `Promise.allSettled` would
+ * record that as *fulfilled* — `attributeOutcome` would then clear that item's
+ * fields from the draft even though no request was ever sent. Assigning
+ * `item` to a `never`-typed binding makes a future, unhandled `FlushItem`
+ * kind a compile error instead of a silent lost write.
  */
 const runItem = (
   item: FlushItem,
@@ -74,15 +62,18 @@ const runItem = (
       );
 
     case 'ratingDelete': {
-      const existing = ctx.ratings.find(
-        (r) => r.userId === ctx.userId && r.titleId === ctx.titleId && r.groupId === ctx.groupId,
-      );
+      const existing = findRatingToDelete(ctx.ratings, ctx.userId, ctx.titleId, ctx.groupId);
       if (!existing) {
         return Promise.reject(new Error('This rating no longer exists. Reload and try again.'));
       }
       return item.season !== undefined
         ? deleteRatingSeason(existing.id, item.season)
         : deleteRating(existing.id);
+    }
+
+    default: {
+      const _exhaustive: never = item;
+      return Promise.reject(new Error('Unhandled flush item kind.'));
     }
   }
 };
@@ -108,34 +99,43 @@ export const useStagedTitleEdits = (args: {
   const [state, dispatch] = useReducer(stagedEditsReducer, initialStagedState);
   const [saving, setSaving] = useState(false);
 
-  // flush() is called from event handlers, well after the render that created
-  // it — without this mirror it would close over whatever `state` was at the
-  // last useCallback recompute, which planFlush would then flush stale.
+  // `flush` reads every one of these through a ref, assigned right here during
+  // render rather than in a passive effect. An effect runs after commit, so
+  // between a commit and the effect — a handler that stages and then calls
+  // `flush()` in the same tick, or a parent's layout/passive effect that runs
+  // before this hook's — the ref would still hold the *previous* render's
+  // value. Mirroring during render closes that window. All six are mirrored,
+  // not just the draft: a stale `groupId` read here would pair the old group
+  // with the current draft and flush into the wrong one, which is exactly the
+  // bug this pattern exists to prevent.
   const stateRef = useRef(state);
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  stateRef.current = state;
 
   const ratingsRef = useRef(ratings);
-  useEffect(() => {
-    ratingsRef.current = ratings;
-  }, [ratings]);
+  ratingsRef.current = ratings;
 
   const baselinesRef = useRef(baselines);
-  useEffect(() => {
-    baselinesRef.current = baselines;
-  }, [baselines]);
+  baselinesRef.current = baselines;
+
+  const groupIdRef = useRef(groupId);
+  groupIdRef.current = groupId;
+
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
+
+  const titleIdRef = useRef(titleId);
+  titleIdRef.current = titleId;
 
   // Skip the first render: this only guards against a *later* group switch
   // leaving a stale draft behind, not the initial mount.
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
+  const mountedGroupId = useRef(groupId);
+  if (mountedGroupId.current !== groupId) {
+    mountedGroupId.current = groupId;
+    // A dispatch during render, not a follow-up effect: the change is
+    // immediate and doesn't leave a one-render window where the stale draft
+    // from the old group is still what `state` (and `flush`) sees.
     dispatch({ type: 'reset' });
-  }, [groupId]);
+  }
 
   const changes: Change[] = useMemo(() => deriveChanges(state), [state]);
   const changeCount = changes.length;
@@ -168,7 +168,14 @@ export const useStagedTitleEdits = (args: {
     dispatch({ type: 'reset' });
   }, []);
 
+  // Empty deps is deliberate: every value flush needs comes off a ref mirrored
+  // during render (see above), so the function's identity never has to change
+  // for it to see current data.
   const flush = useCallback(async (): Promise<FlushResult> => {
+    const groupId = groupIdRef.current;
+    const userId = userIdRef.current;
+    const titleId = titleIdRef.current;
+
     if (!groupId || !userId) {
       return { ok: false, failed: [] };
     }
@@ -183,7 +190,7 @@ export const useStagedTitleEdits = (args: {
       const succeeded: Array<{ scope: ScopeKey; field: StagedField }> = [];
       const failed: FieldFailure[] = [];
       items.forEach((item, index) => {
-        const result = attribute(item, outcomes[index]);
+        const result = attributeOutcome(item, outcomes[index]);
         succeeded.push(...result.succeeded);
         failed.push(...result.failed);
       });
@@ -193,7 +200,7 @@ export const useStagedTitleEdits = (args: {
     } finally {
       setSaving(false);
     }
-  }, [groupId, titleId, userId]);
+  }, []);
 
   return {
     draft: state.drafts,

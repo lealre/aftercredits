@@ -86,17 +86,30 @@ const clearFailure = (
 export const stagedEditsReducer = (state: StagedState, action: StagedAction): StagedState => {
   switch (action.type) {
     case 'stage': {
-      const failures = clearFailure(state.failures, action.scope, action.field);
+      let failures = clearFailure(state.failures, action.scope, action.field);
+      let drafts: Record<ScopeKey, ScopeDraft>;
+
       if (action.value === action.baseline) {
-        return { drafts: withoutField(state.drafts, action.scope, action.field), failures };
-      }
-      return {
-        drafts: {
+        drafts = withoutField(state.drafts, action.scope, action.field);
+      } else {
+        drafts = {
           ...state.drafts,
           [action.scope]: { ...state.drafts[action.scope], [action.field]: action.value },
-        },
-        failures,
-      };
+        };
+      }
+
+      // The watched endpoint force-blanks watchedAt whenever watched is saved
+      // false (see updateMovieWatchedStatus), so a staged date behind a scope
+      // that's being unwatched would otherwise flush, appear to succeed, and
+      // get silently discarded server-side. Dropping it here keeps the draft
+      // — and the pending-changes summary built from it — honest about what
+      // a flush will actually persist.
+      if (action.field === 'watched' && action.value === false) {
+        drafts = withoutField(drafts, action.scope, 'watchedAt');
+        failures = clearFailure(failures, action.scope, 'watchedAt');
+      }
+
+      return { drafts, failures };
     }
 
     case 'stageRatingDelete': {

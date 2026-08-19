@@ -3,10 +3,12 @@ import {
   compareScopes,
   isSeasonScope,
   seasonOf,
+  type FieldFailure,
   type ScopeKey,
   type StagedField,
   type StagedState,
 } from './stagedEdits';
+import type { Rating } from '@/types/movie';
 
 /** What the server currently holds for a scope, for the fields that travel together. */
 export type ScopeBaseline = { watched: boolean; watchedAt: string };
@@ -77,3 +79,49 @@ export const planFlush = (
 
   return [...watchedItems, ...upserts, ...deletes];
 };
+
+export const GENERIC_FLUSH_FAILURE_MESSAGE = 'Could not save this change. Please try again.';
+
+export type FlushOutcome = {
+  succeeded: Array<{ scope: ScopeKey; field: StagedField }>;
+  failed: FieldFailure[];
+};
+
+/**
+ * Turn one settled promise back into the fields it covers.
+ *
+ * An item's `fields` succeed or fail as a unit because they were sent as one
+ * API call — a `watched` item covering both `watched` and `watchedAt` cannot
+ * half-succeed. This is what lets one item's failure stay staged while an
+ * unrelated item in the same flush clears normally.
+ */
+export const attributeOutcome = (
+  item: FlushItem,
+  outcome: PromiseSettledResult<unknown>,
+): FlushOutcome => {
+  if (outcome.status === 'fulfilled') {
+    return { succeeded: item.fields.map((field) => ({ scope: item.scope, field })), failed: [] };
+  }
+  const err = outcome.reason;
+  const message =
+    err instanceof Error && err.message ? err.message : GENERIC_FLUSH_FAILURE_MESSAGE;
+  return {
+    succeeded: [],
+    failed: item.fields.map((field) => ({ scope: item.scope, field, message })),
+  };
+};
+
+/**
+ * Find the rating a `ratingDelete` item removes.
+ *
+ * Matched on `(userId, titleId, groupId)` — the same scoping `saveOrUpdateRating`
+ * uses — so a rating the same user holds on the same title in a *different*
+ * group is never picked up and deleted by mistake.
+ */
+export const findRatingToDelete = (
+  ratings: Rating[],
+  userId: string,
+  titleId: string,
+  groupId: string,
+): Rating | undefined =>
+  ratings.find((r) => r.userId === userId && r.titleId === titleId && r.groupId === groupId);

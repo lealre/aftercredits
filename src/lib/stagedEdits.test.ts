@@ -116,6 +116,33 @@ describe('stagedEditsReducer', () => {
     expect(s.failures).toEqual([{ scope: S1, field: 'watched', message: 'a' }]);
   });
 
+  it('dropping watched to false also drops a staged watchedAt for the same scope', () => {
+    let s = reduce(initialStagedState, {
+      type: 'stage', scope: TITLE_SCOPE, field: 'watchedAt', value: '2026-08-01', baseline: '',
+    });
+    s = reduce(s, {
+      type: 'stage', scope: TITLE_SCOPE, field: 'watched', value: false, baseline: true,
+    });
+    expect(s.drafts).toEqual({ [TITLE_SCOPE]: { watched: false } });
+  });
+
+  it('staging watched true leaves a staged watchedAt alone', () => {
+    let s = reduce(initialStagedState, {
+      type: 'stage', scope: TITLE_SCOPE, field: 'watchedAt', value: '2026-08-01', baseline: '',
+    });
+    s = reduce(s, {
+      type: 'stage', scope: TITLE_SCOPE, field: 'watched', value: true, baseline: false,
+    });
+    expect(s.drafts).toEqual({ [TITLE_SCOPE]: { watched: true, watchedAt: '2026-08-01' } });
+  });
+
+  it('staging watched false with no staged watchedAt behaves exactly as before', () => {
+    const s = reduce(initialStagedState, {
+      type: 'stage', scope: TITLE_SCOPE, field: 'watched', value: false, baseline: true,
+    });
+    expect(s.drafts).toEqual({ [TITLE_SCOPE]: { watched: false } });
+  });
+
   it('reset empties drafts and failures', () => {
     const dirty: StagedState = {
       drafts: { [S1]: { watched: true } },
