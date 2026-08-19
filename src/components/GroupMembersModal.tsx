@@ -54,7 +54,7 @@ export const GroupMembersModal = ({
         ) : members.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">No members found.</p>
         ) : (
-          <ul className="divide-y divide-border/60 max-h-[320px] overflow-y-auto">
+          <ul className="divide-y divide-border/60 max-h-[320px] overflow-y-auto scrollbar-subtle">
             {members.map((m) => (
               <li key={m.id} className="flex items-center justify-between gap-2 py-2">
                 <div className="min-w-0">
