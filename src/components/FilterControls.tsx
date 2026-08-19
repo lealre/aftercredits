@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ArrowUpDown, Filter, ChevronDown, X } from 'lucide-react';
 import {
   Select,
@@ -75,22 +76,6 @@ export const FilterControls = ({
   const [pendingOrderBy, setPendingOrderBy] = useState<string | undefined>(orderBy);
   const [pendingAscending, setPendingAscending] = useState<boolean>(ascending);
   const [pendingTitleType, setPendingTitleType] = useState<'all' | 'serie' | 'movie' | undefined>(titleType);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (open && dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    
-    if (open) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [open]);
-
   // Sync pending values when props change
   useEffect(() => {
     setPendingOrderBy(orderBy);
@@ -188,23 +173,34 @@ export const FilterControls = ({
           </div>
           
           <div className="flex items-center gap-2">
-            <div className="relative" ref={dropdownRef}>
+            <Popover open={open} onOpenChange={setOpen}>
+              <PopoverTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
                 className="flex items-center gap-2 text-xs sm:text-sm"
-                onClick={() => setOpen(!open)}
                 aria-label="More filters"
-                aria-expanded={open}
               >
                 <Filter className="w-4 h-4" />
                 {/* Label drops below sm so the row fits beside the chips. */}
                 <span className="hidden sm:inline">More Filters</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
               </Button>
-              
-              {open && (
-              <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-2 w-[min(15rem,calc(100vw-1rem))] sm:w-80 bg-popover border rounded-md shadow-md p-4 z-50">
+              </PopoverTrigger>
+
+              {/*
+                Radix measures the trigger and the viewport at open time and
+                shifts the panel to fit, so the width no longer has to be capped
+                against the worst case position of a button that moves with the
+                chips beside it. collisionPadding keeps a margin when it does
+                shift; it renders in a portal, so no ancestor can clip it.
+              */}
+              <PopoverContent
+                align="start"
+                sideOffset={8}
+                collisionPadding={12}
+                className="w-[calc(100vw-1.5rem)] sm:w-80 p-4"
+              >
                 <div className="space-y-4">
                   <div>
                     <h4 className="font-medium leading-none mb-1 text-sm sm:text-base">Advanced Filters</h4>
@@ -289,9 +285,8 @@ export const FilterControls = ({
                     </Button>
                   </div>
                 </div>
-              </div>
-              )}
-            </div>
+              </PopoverContent>
+            </Popover>
             {hasNonDefaultFilters && (
               <Button
                 variant="ghost"
