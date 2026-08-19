@@ -163,7 +163,18 @@ export const ActivityBell = () => {
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent className="w-80" align="end">
+      {/*
+        w-80 is 320px, which all but fills a 375px phone: with align="end"
+        Radix's collision handling then shoves the panel flush against the
+        opposite edge, so it visibly touches the left of the screen. Capping the
+        width to the viewport minus a margin, and telling Radix to keep that
+        margin when it collides, leaves the panel inset on both sides.
+      */}
+      <DropdownMenuContent
+        className="w-80 max-w-[calc(100vw-1.5rem)]"
+        align="end"
+        collisionPadding={12}
+      >
         {/*
           Presentational: role="menu" wants menuitem / group / separator
           children, so this flex box says it is only here to place things.

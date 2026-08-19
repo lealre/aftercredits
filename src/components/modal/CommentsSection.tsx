@@ -229,7 +229,7 @@ export const CommentsSection = ({
           <MessageCircle className="w-4 h-4" />
           Comments ({comments.length})
         </h3>
-        <div className="space-y-3 overflow-x-hidden max-h-[300px] overflow-y-auto">
+        <div className="space-y-3 overflow-x-hidden max-h-[300px] overflow-y-auto scrollbar-subtle">
           {loadingComments ? (
             <div className="text-center text-xs text-muted-foreground py-2">Loading comments...</div>
           ) : comments.length === 0 ? (

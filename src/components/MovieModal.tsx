@@ -509,17 +509,25 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-full max-w-3xl max-h-[90vh] flex flex-col bg-movie-surface border-border p-0">
-        <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
+      {/*
+        The base dialog is `w-full ... sm:rounded-lg`, so below 640px it went
+        edge to edge with square corners — the poster grid showed above and
+        below it and the whole thing read as unfinished rather than as a panel.
+        Insetting it from the viewport and rounding it at every width makes it a
+        card floating over the grid. max-h leaves less showing through, and
+        overflow-hidden keeps the scrolling body inside the rounded corners.
+      */}
+      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[92vh] sm:max-h-[90vh] flex flex-col bg-movie-surface border-border p-0 rounded-lg overflow-hidden">
+        <DialogHeader className="px-4 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4 shrink-0">
           <DialogTitle className="text-movie-blue">{movie.title}</DialogTitle>
         </DialogHeader>
         
         <div className="flex-1 flex flex-col min-h-0">
           {/* On mobile: single scroll container, on desktop: grid with separate scrolls */}
-          <div className="flex-1 overflow-y-auto px-3 pb-3 md:overflow-hidden md:flex md:flex-col">
+          <div className="flex-1 overflow-y-auto scrollbar-subtle px-4 sm:px-6 pb-4 sm:pb-5 md:overflow-hidden md:flex md:flex-col">
             <div className="flex flex-col md:grid md:[grid-template-columns:minmax(0,260px)_minmax(0,1fr)] gap-3 w-full md:flex-1 md:min-h-0">
               {/* Movie Info */}
-              <div className="md:overflow-y-auto md:h-full space-y-4 md:px-3 md:pb-3">
+              <div className="md:overflow-y-auto scrollbar-subtle md:h-full space-y-4 md:px-3 md:pb-3">
                 {/* Hide poster on mobile */}
                 <div className="hidden md:block aspect-[2/3] relative overflow-hidden rounded-lg">
                   {(() => {
@@ -572,7 +580,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
               {/* Movie Status - on mobile scrolls with everything, on desktop scrolls separately */}
               <div className="flex flex-col min-h-0 md:h-full md:flex md:flex-col">
-                <div className="flex-1 overflow-y-auto md:overflow-y-auto space-y-6 md:px-3 md:pb-3 md:min-h-0">
+                <div className="flex-1 overflow-y-auto md:overflow-y-auto scrollbar-subtle space-y-6 md:px-3 md:pb-3 md:min-h-0">
             {/* Season Selection for TV Series */}
             {isTVSeries && movie.seasons && movie.seasons.length > 0 && (
               <div className="space-y-2">
@@ -586,7 +594,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     position="popper" 
                     side="bottom" 
                     sideOffset={4}
-                    className="max-h-[200px] overflow-y-auto"
+                    className="max-h-[200px] overflow-y-auto scrollbar-subtle"
                   >
                     {[...movie.seasons]
                       .sort((a, b) => parseInt(a.season, 10) - parseInt(b.season, 10))

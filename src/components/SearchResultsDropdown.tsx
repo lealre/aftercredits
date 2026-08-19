@@ -38,7 +38,7 @@ export const SearchResultsDropdown = ({
   };
 
   return (
-    <div className="absolute top-full left-0 right-0 z-50 mt-2 rounded-lg border border-border bg-movie-surface shadow-lg overflow-hidden max-h-[min(70vh,420px)] overflow-y-auto">
+    <div className="absolute top-full left-0 right-0 z-50 mt-2 rounded-lg border border-border bg-movie-surface shadow-lg overflow-hidden max-h-[min(70vh,420px)] overflow-y-auto scrollbar-subtle">
       {loading ? (
         <div className="flex items-center justify-center py-10">
           <Loader2 className="w-8 h-8 animate-spin text-movie-blue" />

@@ -148,17 +148,23 @@ export const FilterControls = ({
   return (
     <div className="p-3 sm:p-4 bg-movie-surface/50 rounded-lg border border-border/50">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">Filter:</span>
-            <div className="flex gap-2 flex-wrap">
+        {/*
+          One row on every width, not a column on mobile: the chips and the
+          filter button together are one control group, and stacking them cost a
+          whole line on a 375px screen while the group selector took a third.
+          The button collapses to its icon below sm to make the row fit.
+        */}
+        <div className="flex flex-row items-center gap-1.5 sm:gap-2 flex-nowrap sm:flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap sm:flex-wrap">
+            <span className="sr-only sm:not-sr-only text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">Filter:</span>
+            <div className="flex gap-1.5 sm:gap-2">
               <Button
                 variant={watchedFilter === 'all' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => {
                   onWatchedFilterChange('all');
                 }}
-                className={`text-xs sm:text-sm ${watchedFilter === 'all' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                className={`px-2.5 sm:px-3 text-xs sm:text-sm ${watchedFilter === 'all' ? 'bg-movie-blue text-primary-foreground hover:bg-movie-blue/90' : ''}`}
               >
                 All
               </Button>
@@ -166,7 +172,7 @@ export const FilterControls = ({
                 variant={watchedFilter === 'watched' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => onWatchedFilterChange('watched')}
-                className={`text-xs sm:text-sm ${watchedFilter === 'watched' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                className={`px-2.5 sm:px-3 text-xs sm:text-sm ${watchedFilter === 'watched' ? 'bg-movie-blue text-primary-foreground hover:bg-movie-blue/90' : ''}`}
               >
                 Watched
               </Button>
@@ -174,7 +180,7 @@ export const FilterControls = ({
                 variant={watchedFilter === 'unwatched' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => onWatchedFilterChange('unwatched')}
-                className={`text-xs sm:text-sm ${watchedFilter === 'unwatched' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                className={`px-2.5 sm:px-3 text-xs sm:text-sm ${watchedFilter === 'unwatched' ? 'bg-movie-blue text-primary-foreground hover:bg-movie-blue/90' : ''}`}
               >
                 Unwatched
               </Button>
@@ -188,15 +194,17 @@ export const FilterControls = ({
                 size="sm"
                 className="flex items-center gap-2 text-xs sm:text-sm"
                 onClick={() => setOpen(!open)}
+                aria-label="More filters"
+                aria-expanded={open}
               >
                 <Filter className="w-4 h-4" />
+                {/* Label drops below sm so the row fits beside the chips. */}
                 <span className="hidden sm:inline">More Filters</span>
-                <span className="sm:hidden">Filters</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
               </Button>
               
               {open && (
-              <div className="absolute left-0 sm:left-auto right-0 sm:right-auto top-full mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-popover border rounded-md shadow-md p-4 z-50">
+              <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-2 w-[min(15rem,calc(100vw-1rem))] sm:w-80 bg-popover border rounded-md shadow-md p-4 z-50">
                 <div className="space-y-4">
                   <div>
                     <h4 className="font-medium leading-none mb-1 text-sm sm:text-base">Advanced Filters</h4>
@@ -210,7 +218,7 @@ export const FilterControls = ({
                           variant={pendingTitleType === undefined || pendingTitleType === 'all' ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => setPendingTitleType(undefined)}
-                          className={`text-xs sm:text-sm ${pendingTitleType === undefined || pendingTitleType === 'all' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                          className={`text-xs sm:text-sm ${pendingTitleType === undefined || pendingTitleType === 'all' ? 'bg-movie-blue text-primary-foreground hover:bg-movie-blue/90' : ''}`}
                         >
                           All
                         </Button>
@@ -218,7 +226,7 @@ export const FilterControls = ({
                           variant={pendingTitleType === 'serie' ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => setPendingTitleType('serie')}
-                          className={`text-xs sm:text-sm ${pendingTitleType === 'serie' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                          className={`text-xs sm:text-sm ${pendingTitleType === 'serie' ? 'bg-movie-blue text-primary-foreground hover:bg-movie-blue/90' : ''}`}
                         >
                           Series
                         </Button>
@@ -226,7 +234,7 @@ export const FilterControls = ({
                           variant={pendingTitleType === 'movie' ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => setPendingTitleType('movie')}
-                          className={`text-xs sm:text-sm ${pendingTitleType === 'movie' ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                          className={`text-xs sm:text-sm ${pendingTitleType === 'movie' ? 'bg-movie-blue text-primary-foreground hover:bg-movie-blue/90' : ''}`}
                         >
                           Movies
                         </Button>
@@ -242,7 +250,7 @@ export const FilterControls = ({
                             variant={pendingOrderBy === option.value ? 'default' : 'outline'}
                             size="sm"
                             onClick={() => setPendingOrderBy(option.value)}
-                            className={`text-xs sm:text-sm ${pendingOrderBy === option.value ? 'bg-movie-blue text-movie-blue-foreground' : ''}`}
+                            className={`text-xs sm:text-sm ${pendingOrderBy === option.value ? 'bg-movie-blue text-primary-foreground hover:bg-movie-blue/90' : ''}`}
                           >
                             {option.label}
                           </Button>
@@ -292,8 +300,8 @@ export const FilterControls = ({
                 className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100 transition-opacity"
                 title="Clear all filters"
               >
-                <X className="h-3 w-3 mr-1" />
-                Clear filters
+                <X className="h-3 w-3 sm:mr-1" />
+                <span className="sr-only sm:not-sr-only">Clear filters</span>
               </Button>
             )}
           </div>
