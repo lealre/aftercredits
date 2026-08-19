@@ -130,3 +130,48 @@ export const stagedEditsReducer = (state: StagedState, action: StagedAction): St
       return initialStagedState;
   }
 };
+
+export type Change = {
+  scope: ScopeKey;
+  scopeLabel: string;
+  field: StagedField;
+  label: string;
+  failure?: string;
+};
+
+const FIELD_ORDER: StagedField[] = ['watched', 'watchedAt', 'rating'];
+
+export const scopeLabel = (scope: ScopeKey): string =>
+  isSeasonScope(scope) ? `Season ${seasonOf(scope)}` : 'Movie';
+
+export const changeLabel = (field: StagedField, value: ScopeDraft[StagedField]): string => {
+  if (field === 'watched') return value ? 'marked watched' : 'marked unwatched';
+  if (field === 'watchedAt') return value ? `watched date ${value}` : 'watched date cleared';
+  return value === null ? 'rating removed' : `rating ${value}`;
+};
+
+/**
+ * Title first, then seasons in numeric order — `'season:10'` sorts before
+ * `'season:2'` as a string, which would list a series' seasons in the wrong
+ * order in the pending summary.
+ */
+export const compareScopes = (a: ScopeKey, b: ScopeKey): number => {
+  const rank = (scope: ScopeKey): [number, number] =>
+    isSeasonScope(scope) ? [1, Number(seasonOf(scope)) || 0] : [0, 0];
+  const [ka, na] = rank(a);
+  const [kb, nb] = rank(b);
+  return ka - kb || na - nb;
+};
+
+export const deriveChanges = (state: StagedState): Change[] =>
+  Object.keys(state.drafts)
+    .sort(compareScopes)
+    .flatMap((scope) =>
+      FIELD_ORDER.filter((field) => field in state.drafts[scope]).map((field) => ({
+        scope,
+        scopeLabel: scopeLabel(scope),
+        field,
+        label: changeLabel(field, state.drafts[scope][field]),
+        failure: state.failures.find((f) => f.scope === scope && f.field === field)?.message,
+      })),
+    );

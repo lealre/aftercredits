@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   TITLE_SCOPE,
+  deriveChanges,
   initialStagedState,
   seasonScope,
   stagedEditsReducer as reduce,
@@ -121,5 +122,64 @@ describe('stagedEditsReducer', () => {
       failures: [{ scope: S1, field: 'watched', message: 'x' }],
     };
     expect(reduce(dirty, { type: 'reset' })).toEqual(initialStagedState);
+  });
+});
+
+describe('deriveChanges', () => {
+  it('orders the title first, then seasons numerically, then fields', () => {
+    const state: StagedState = {
+      drafts: {
+        [seasonScope('10')]: { rating: 6 },
+        [seasonScope('2')]: { rating: 9, watched: true },
+        [TITLE_SCOPE]: { watchedAt: '2026-08-01' },
+      },
+      failures: [],
+    };
+    expect(deriveChanges(state).map((c) => [c.scope, c.field])).toEqual([
+      [TITLE_SCOPE, 'watchedAt'],
+      [seasonScope('2'), 'watched'],
+      [seasonScope('2'), 'rating'],
+      [seasonScope('10'), 'rating'],
+    ]);
+  });
+
+  it('labels every field in both directions', () => {
+    const state: StagedState = {
+      drafts: {
+        [TITLE_SCOPE]: { watched: true, watchedAt: '2026-08-01', rating: 8.5 },
+        [seasonScope('1')]: { watched: false, watchedAt: '', rating: null },
+      },
+      failures: [],
+    };
+    expect(deriveChanges(state).map((c) => c.label)).toEqual([
+      'marked watched',
+      'watched date 2026-08-01',
+      'rating 8.5',
+      'marked unwatched',
+      'watched date cleared',
+      'rating removed',
+    ]);
+  });
+
+  it('labels scopes for humans', () => {
+    const state: StagedState = {
+      drafts: { [TITLE_SCOPE]: { watched: true }, [seasonScope('3')]: { watched: true } },
+      failures: [],
+    };
+    expect(deriveChanges(state).map((c) => c.scopeLabel)).toEqual(['Movie', 'Season 3']);
+  });
+
+  it('attaches a failure to the change it belongs to', () => {
+    const state: StagedState = {
+      drafts: { [TITLE_SCOPE]: { watched: true, rating: 9 } },
+      failures: [{ scope: TITLE_SCOPE, field: 'rating', message: 'boom' }],
+    };
+    const changes = deriveChanges(state);
+    expect(changes.find((c) => c.field === 'watched')?.failure).toBeUndefined();
+    expect(changes.find((c) => c.field === 'rating')?.failure).toBe('boom');
+  });
+
+  it('is empty for a clean state', () => {
+    expect(deriveChanges(initialStagedState)).toEqual([]);
   });
 });
