@@ -75,6 +75,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
+  // `staged.saving` only covers the flush call itself; it clears as soon as
+  // `Promise.allSettled` resolves, which is BEFORE the two `onRefresh*` awaits
+  // below finish. On a partial failure `isDirty` stays true through that
+  // window, so gating buttons on `staged.saving` alone would let a click land
+  // mid-refresh and start a second, concurrent flush against the same failed
+  // items. This wraps the ENTIRE `handleSave` body instead.
+  const [submitting, setSubmitting] = useState(false);
 
   // Reset which season is shown each time the modal opens. `movie.id` is
   // stable for the lifetime of a MovieCard's modal instance (one card, one
@@ -234,21 +241,29 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
       return;
     }
 
-    const { ok } = await staged.flush();
-    // One refresh each, after the whole batch — never per staged item. The
-    // flush already ran every call through `Promise.allSettled`; refetching
-    // per item here would turn one save into N races against the same data.
-    await onRefreshRatings?.();
-    await onRefreshMovies?.();
-    if (!ok) return; // stay open — StagedChangesSummary already renders the failure block
+    // Set before the flush and cleared only in `finally`, after both
+    // refreshes — this is what keeps Save/Retry (and the disabled region)
+    // inert for the flush's whole real duration, not just the network calls.
+    setSubmitting(true);
+    try {
+      const { ok } = await staged.flush();
+      // One refresh each, after the whole batch — never per staged item. The
+      // flush already ran every call through `Promise.allSettled`; refetching
+      // per item here would turn one save into N races against the same data.
+      await onRefreshRatings?.();
+      await onRefreshMovies?.();
+      if (!ok) return; // stay open — StagedChangesSummary already renders the failure block
 
-    onUpdate(movie.id, updatesFromBaselines());
-    toast({
-      title: "Saved",
-      description: "Your changes have been saved.",
-    });
-    staged.reset(); // before onClose, or the discard guard fires on the modal's own success
-    onClose();
+      onUpdate(movie.id, updatesFromBaselines());
+      toast({
+        title: "Saved",
+        description: "Your changes have been saved.",
+      });
+      staged.reset(); // before onClose, or the discard guard fires on the modal's own success
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleDeleteClick = () => {
@@ -466,7 +481,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 <Switch
                   id="watched"
                   checked={shownWatched}
-                  disabled={staged.saving}
+                  disabled={staged.saving || submitting}
                   onCheckedChange={(next) =>
                     staged.stage(visibleScope, 'watched', next, baselines[visibleScope]?.watched ?? false)
                   }
@@ -503,7 +518,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                       variant="ghost"
                       size="sm"
                       onClick={handleDeleteWatchedDate}
-                      disabled={staged.saving}
+                      disabled={staged.saving || submitting}
                       className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                     >
                       <XCircle className="h-3 w-3" />
@@ -513,7 +528,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                   <Input
                     type="date"
                     value={shownWatchedAt}
-                    disabled={staged.saving}
+                    disabled={staged.saving || submitting}
                     onChange={(e) =>
                       staged.stage(
                         visibleScope,
@@ -573,7 +588,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 max="10"
                                 step="0.1"
                                 value={displayedRating ?? ''}
-                                disabled={staged.saving}
+                                disabled={staged.saving || submitting}
                                 onChange={(e) => {
                                   const inputValue = e.target.value;
                                   if (inputValue === '' || inputValue === '.') {
@@ -625,7 +640,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => staged.unstage(visibleScope, 'rating')}
-                                  disabled={staged.saving}
+                                  disabled={staged.saving || submitting}
                                   className="h-6 w-6 p-0"
                                 >
                                   <X className="h-3 w-3" />
@@ -635,7 +650,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => staged.stageRatingDelete(visibleScope, ratingBaseline !== null)}
-                                  disabled={staged.saving}
+                                  disabled={staged.saving || submitting}
                                   className="h-6 w-6 p-0"
                                 >
                                   <Trash2 className="h-3 w-3" />
@@ -675,7 +690,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 <StagedChangesSummary
                   changes={staged.changes}
                   visibleScope={visibleScope}
-                  saving={staged.saving}
+                  saving={staged.saving || submitting}
                   onRetry={handleSave}
                 />
                 <div className="flex gap-2 pb-4 border-t border-border pt-4">
@@ -688,19 +703,20 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                   <Button
                     variant="outline"
                     onClick={attemptClose}
+                    disabled={staged.saving || submitting}
                     className="flex-1 min-w-0 border-border bg-movie-surface hover:bg-movie-surface-hover hover:text-foreground"
                   >
                     Cancel
                   </Button>
                   <Button
                     onClick={handleSave}
-                    disabled={!staged.isDirty || staged.saving}
+                    disabled={!staged.isDirty || staged.saving || submitting}
                     className="flex-1 min-w-0 truncate bg-movie-blue hover:bg-movie-blue-light"
                   >
-                    {staged.saving
+                    {staged.saving || submitting
                       ? 'Saving…'
                       : staged.isDirty
-                        ? `Save ${staged.changeCount} change${staged.changeCount === 1 ? '' : 's'}`
+                        ? `Save (${staged.changeCount})`
                         : 'Save'}
                   </Button>
                   <Button
