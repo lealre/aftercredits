@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Movie, User, Rating, SeasonRating } from '@/types/movie';
 import {
   Dialog,
@@ -6,16 +6,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,16 +19,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Star, Trash2, ExternalLink, X, Edit3, XCircle, Check } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Star, Trash2, ExternalLink, X, Edit3, Check, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { CommentsSection } from './modal/CommentsSection';
-import { saveOrUpdateRating, updateMovieWatchedStatus, deleteMovie, deleteRating, deleteRatingSeason as deleteRatingSeasonService } from '@/services/backendService';
+import { StagedChangesSummary } from './modal/StagedChangesSummary';
+import { deleteMovie } from '@/services/backendService';
 import { getUserId } from '@/services/authService';
 import { useActiveGroupId } from '@/hooks/useActiveGroupId';
 import { useEpisodes } from '@/hooks/useEpisodes';
+import { useStagedTitleEdits } from '@/hooks/useStagedTitleEdits';
+import { TITLE_SCOPE, seasonScope, isSeasonScope, seasonOf, type ScopeKey } from '@/lib/stagedEdits';
+import type { ScopeBaseline } from '@/lib/flushPlan';
 import { normalizeNote } from '@/lib/rating';
+import { toDateInputValue } from '@/lib/dates';
 
 interface MovieModalProps {
   movie: Movie;
@@ -67,85 +72,142 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   // Episodes are fetched on demand (backend omits them from the list payload)
   const { data: episodes = [], isLoading: episodesLoading, isError: episodesError } = useEpisodes(movie.imdbId, isOpen && isTVSeries);
 
-  const [userRatings, setUserRatings] = useState<Record<string, { rating: number }>>({});
-  // Initialize watched state directly from movie prop - update only when modal opens with new movie
-  const [watched, setWatched] = useState(() => movie.watched || false);
-  const [watchedAt, setWatchedAt] = useState(() => movie.watchedAt || '');
   const [selectedSeason, setSelectedSeason] = useState<string>('');
-  const [isEditingWatchedAt, setIsEditingWatchedAt] = useState(false);
-  const [tempWatchedAt, setTempWatchedAt] = useState(''); // Temporary date while editing
-  const [editingUserId, setEditingUserId] = useState<string | null>(null); // Track which user's rating is being edited
-  const [tempUserRatings, setTempUserRatings] = useState<Record<string, { rating: number }>>({}); // Temporary ratings while editing
-  const [deletingRatingId, setDeletingRatingId] = useState<string | null>(null); // Track which rating is being deleted
-  const [showDeleteRatingModal, setShowDeleteRatingModal] = useState(false);
-  const [ratingToDelete, setRatingToDelete] = useState<string | null>(null); // userId to delete
-  const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  // Track the movie ID to detect when it changes
-  const [lastMovieId, setLastMovieId] = useState<string | null>(null);
-  
-  // Sync watched state only when modal opens with a specific movie
-  useEffect(() => {
-    if (isOpen) {
-      const isNewMovie = lastMovieId !== movie.id;
-      
-      if (isTVSeries && movie.seasons && movie.seasons.length > 0) {
-        // Only reset season selection when opening modal for a new movie
-        if (isNewMovie) {
-          const firstSeason = movie.seasons[0].season;
-          setSelectedSeason(firstSeason);
-          setLastMovieId(movie.id);
-        }
-        
-        // Update watched state for the current season (always update, even if season didn't change)
-        const seasonToUse = selectedSeason || movie.seasons[0].season;
-        const seasonWatched = movie.seasonsWatched?.[seasonToUse];
-        setWatched(seasonWatched?.watched ?? false);
-        setWatchedAt(seasonWatched?.watchedAt ?? '');
-      } else {
-        if (isNewMovie) {
-          setSelectedSeason('');
-          setLastMovieId(movie.id);
-        }
-        setWatched(movie.watched || false);
-        setWatchedAt(movie.watchedAt || '');
-      }
-    } else {
-      // Reset when modal closes
-      setLastMovieId(null);
-    }
-  }, [isOpen, movie.id, movie.watched, movie.watchedAt, movie.seasonsWatched, isTVSeries, movie.seasons, selectedSeason, lastMovieId]); // Sync when modal opens or movie changes
+  const [showDiscardModal, setShowDiscardModal] = useState(false);
+  // `staged.saving` only covers the flush call itself; it clears as soon as
+  // `Promise.allSettled` resolves, which is BEFORE the two `onRefresh*` awaits
+  // below finish. On a partial failure `isDirty` stays true through that
+  // window, so gating buttons on `staged.saving` alone would let a click land
+  // mid-refresh and start a second, concurrent flush against the same failed
+  // items. This wraps the ENTIRE `handleSave` body instead.
+  const [submitting, setSubmitting] = useState(false);
 
-  // When user changes season, update watched state to reflect that season (TV series only)
+  // Whether the rating input is revealed. Purely presentational: a permanently
+  // open number field reads as clutter in a column that is otherwise text, so
+  // the pencil gates it. It does NOT gate committing — typing stages straight
+  // into the draft either way, and Save is still the only thing that writes.
+  const [editingRating, setEditingRating] = useState(false);
+
+  /**
+   * What the rating input literally shows while it is open, as typed.
+   *
+   * The field cannot be driven off the staged/baseline number alone. Emptying
+   * it has to mean "no rating staged yet" — otherwise clearing would send a
+   * real 0.0 — but the moment nothing is staged, a derived value falls back to
+   * the server's number and refills the box, so the field could never be
+   * emptied to type a different one. Holding the raw text separately lets it
+   * sit empty while the draft holds nothing, which is the honest pairing.
+   *
+   * `null` means "not editing"; the displayed number is derived as usual.
+   */
+  const [ratingDraftText, setRatingDraftText] = useState<string | null>(null);
+
+  // Reset which season is shown each time the modal opens. `movie.id` is
+  // stable for the lifetime of a MovieCard's modal instance (one card, one
+  // title), so this only needs to react to the open transition — not to
+  // `movie.seasons`, whose array identity can change on every refetch and
+  // would otherwise stomp a season the user had already picked.
   useEffect(() => {
     if (!isOpen) return;
-    if (!isTVSeries) return;
-    if (!selectedSeason) return;
+    if (isTVSeries && movie.seasons && movie.seasons.length > 0) {
+      setSelectedSeason(movie.seasons[0].season);
+    } else {
+      setSelectedSeason('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
-    const seasonWatched = movie.seasonsWatched?.[selectedSeason];
-    setWatched(seasonWatched?.watched ?? false);
-    setWatchedAt(seasonWatched?.watchedAt ?? '');
-    setIsEditingWatchedAt(false);
-    setTempWatchedAt('');
-    // Reset rating editing state when season changes
-    setEditingUserId(null);
-    setTempUserRatings({});
-    setUserRatings({}); // Clear userRatings to reset state when season changes
-  }, [isOpen, isTVSeries, selectedSeason, movie.seasonsWatched]);
+  /**
+   * The scope backing whatever the modal currently shows: the title itself,
+   * or the selected season for a TV series. Every staged read/write below
+   * goes through this so switching seasons never touches another season's
+   * draft.
+   */
+  const visibleScope: ScopeKey = isTVSeries && selectedSeason ? seasonScope(selectedSeason) : TITLE_SCOPE;
 
+  /**
+   * Server-truth baselines, one per scope, derived from `movie` alone —
+   * never from local state. `planFlush` fills in the baseline for whichever
+   * half of the watched/watchedAt pair wasn't staged, so a stale baseline
+   * here would silently flush stale data while reporting success. `movie` is
+   * refetched after every save, which is what keeps this current.
+   */
+  const baselines = useMemo<Record<ScopeKey, ScopeBaseline>>(() => {
+    // `watchedAt` is normalized to `yyyy-MM-dd` HERE rather than at the input,
+    // because the baseline is what the draft compares against. Feeding the
+    // input a truncated date while comparing against a full timestamp would
+    // make re-picking the same day look like a change, and stage a write that
+    // changes nothing.
+    const map: Record<ScopeKey, ScopeBaseline> = {
+      [TITLE_SCOPE]: {
+        watched: movie.watched ?? false,
+        watchedAt: toDateInputValue(movie.watchedAt),
+      },
+    };
+    for (const season of Object.keys(movie.seasonsWatched ?? {})) {
+      const seasonWatched = movie.seasonsWatched?.[season];
+      map[seasonScope(season)] = {
+        watched: seasonWatched?.watched ?? false,
+        watchedAt: toDateInputValue(seasonWatched?.watchedAt),
+      };
+    }
+    return map;
+  }, [movie.watched, movie.watchedAt, movie.seasonsWatched]);
+
+  const staged = useStagedTitleEdits({
+    groupId: currentGroupId,
+    titleId: movie.imdbId,
+    userId: currentUserId,
+    ratings,
+    baselines,
+  });
+
+  // The modal is permanently mounted (MovieCard toggles only the Radix
+  // dialog via `isOpen`), so without this an abandoned draft would survive
+  // being closed and still be flushable the next time the modal opens.
   useEffect(() => {
     if (!isOpen) {
-      // Reset state when modal closes - revert to original movie data
-      setUserRatings({});
-      setWatched(movie.watched || false);
-      setWatchedAt(movie.watchedAt || '');
-      setIsEditingWatchedAt(false);
-      setTempWatchedAt('');
-      setEditingUserId(null);
-      setTempUserRatings({});
+      staged.reset();
+      setEditingRating(false);
+      setRatingDraftText(null);
     }
-  }, [isOpen, movie.watched, movie.watchedAt]);
+    // `staged.reset` is a stable useCallback (empty deps); depending on the
+    // whole `staged` object would rerun this every render, since the hook
+    // returns a new object each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, staged.reset]);
+
+  // Collapse the rating editor when the visible scope changes, so switching
+  // season does not leave an input open over a different season's value. Safe
+  // to key an effect on the scope here precisely because this touches only the
+  // presentational flag — the draft is untouched, which is what the deleted
+  // season-reset effect got wrong.
+  useEffect(() => {
+    setEditingRating(false);
+    setRatingDraftText(null);
+  }, [visibleScope]);
+
+  const shownWatched = staged.isStaged(visibleScope, 'watched')
+    ? (staged.fieldValue(visibleScope, 'watched') as boolean)
+    : baselines[visibleScope]?.watched ?? false;
+  const shownWatchedAt = staged.isStaged(visibleScope, 'watchedAt')
+    ? (staged.fieldValue(visibleScope, 'watchedAt') as string)
+    : baselines[visibleScope]?.watchedAt ?? '';
+
+  /**
+   * The current user's server-truth rating for whatever scope is visible —
+   * the season's rating when a season is selected, else the title's. This is
+   * the `baseline` half of every staged rating action below: `stage` needs it
+   * to know whether a typed value differs from the server at all, and
+   * `stageRatingDelete` needs it to know whether there's anything to delete.
+   */
+  const ratingBaseline: number | null = currentUserId
+    ? (isTVSeries && selectedSeason
+        ? getRatingForUser(currentUserId)?.seasonsRatings?.[selectedSeason]?.rating ?? null
+        : getRatingForUser(currentUserId)?.rating ?? null)
+    : null;
 
   /**
    * The one place a user-typed note enters this component's state.
@@ -156,300 +218,122 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
    * free-standing input never does — so typing `8.55` used to reach the backend
    * untouched and now earns a 400 (ErrNoteTooPrecise). Clamping and rounding at
    * the point of capture means the UI simply cannot hold a note the backend
-   * would refuse, in either the editing or the committed branch below.
+   * would refuse.
    */
-  const updateUserRating = (userId: string, rating: number) => {
-    const note = normalizeNote(rating);
-    if (editingUserId === userId) {
-      // Update temporary rating when editing this specific user
-      setTempUserRatings(prev => ({
-        ...prev,
-        [userId]: { rating: note }
-      }));
-    } else {
-      // Update actual ratings when not editing (shouldn't happen, but keep for safety)
-      setUserRatings(prev => ({
-        ...prev,
-        [userId]: { rating: note }
-      }));
-    }
+  const onRatingInput = (raw: number) => {
+    const note = normalizeNote(raw);
+    staged.stage(visibleScope, 'rating', note, ratingBaseline);
   };
 
-  const getUserRating = (userId: string): number | null => {
-    // For TV series with a selected season, check for season-specific rating
-    if (isTVSeries && selectedSeason) {
-      // When editing this user, use temp rating if available
-      if (editingUserId === userId && tempUserRatings[userId]) {
-        return tempUserRatings[userId].rating;
-      }
-      // When not editing but has local rating, use that
-      if (userRatings[userId]) {
-        return userRatings[userId].rating;
-      }
-      // Otherwise get from API season ratings
-      const apiRating = getRatingForUser(userId);
-      if (apiRating?.seasonsRatings && apiRating.seasonsRatings[selectedSeason] !== undefined) {
-        return apiRating.seasonsRatings[selectedSeason].rating;
-      }
-      // If no season rating, return null (no rating exists)
-      return null;
-    }
+  /**
+   * The watched/watchedAt half of what a successful flush just persisted, in
+   * the `Partial<Movie>` shape `onUpdate` expects — mirrors the payload the
+   * pre-staging code built inline. It walks the scopes whose watched pair the
+   * draft touched and overlays each staged value on that scope's baseline, so
+   * a scope where only one half of the pair was staged still reports both.
+   *
+   * Everything it reads — `staged.changes`, `staged.isStaged`,
+   * `staged.fieldValue`, `baselines`, `movie` — comes off one render closure,
+   * so they are a matched pre-flush snapshot even though the reducer has
+   * already been dispatched into by the flush that just finished. That is what
+   * makes it safe to call after an `await`.
+   */
+  const watchedUpdatesFromDraft = (): Partial<Movie> => {
+    const scopesWithWatchedChanges = new Set<ScopeKey>(
+      staged.changes
+        .filter((change) => change.field === 'watched' || change.field === 'watchedAt')
+        .map((change) => change.scope),
+    );
 
-    // For movies or when no season is selected, use the regular rating logic
-    if (editingUserId === userId) {
-      // When editing this user, use temp rating if available, otherwise fall back to current rating
-      if (tempUserRatings[userId]) {
-        return tempUserRatings[userId].rating;
-      }
-      // Fall back to current rating (from API or userRatings)
-      if (userRatings[userId]) {
-        return userRatings[userId].rating;
-      }
-      const apiRating = getRatingForUser(userId);
-      return apiRating?.rating ?? null;
-    } else {
-      // When not editing, check if user has a local rating being edited
-      if (userRatings[userId]) {
-        return userRatings[userId].rating;
-      }
-      // Otherwise get from API
-      const apiRating = getRatingForUser(userId);
-      return apiRating?.rating ?? null;
-    }
-  };
+    const updates: Partial<Movie> = {};
+    let seasonsWatched: Movie['seasonsWatched'] | undefined;
 
-  const handleDeleteRatingClick = (userId: string) => {
-    setRatingToDelete(userId);
-    setShowDeleteRatingModal(true);
-  };
+    for (const scope of scopesWithWatchedChanges) {
+      const watched = staged.isStaged(scope, 'watched')
+        ? (staged.fieldValue(scope, 'watched') as boolean)
+        : baselines[scope]?.watched ?? false;
+      const watchedAt = staged.isStaged(scope, 'watchedAt')
+        ? (staged.fieldValue(scope, 'watchedAt') as string)
+        : baselines[scope]?.watchedAt ?? '';
 
-  const handleDeleteRatingConfirm = async () => {
-    if (!ratingToDelete) return;
-    
-    const userId = ratingToDelete;
-    setShowDeleteRatingModal(false);
-    setDeletingRatingId(userId);
-    
-    // Store the current selected season to preserve it after refresh
-    const currentSeason = selectedSeason;
-    
-    try {
-      // Find the full rating object from the ratings array (which includes the id)
-      const fullRating = ratings.find(r => r.userId === userId && r.titleId === movie.imdbId && r.groupId === currentGroupId);
-      if (!fullRating) {
-        toast({
-          title: "Error",
-          description: "Rating not found.",
-          variant: "destructive",
-        });
-        setDeletingRatingId(null);
-        setRatingToDelete(null);
-        return;
-      }
-
-      if (isTVSeries && currentSeason) {
-        // For TV series, delete the season-specific rating
-        const seasonKey = currentSeason;
-        const seasonRating = fullRating.seasonsRatings?.[seasonKey];
-        if (!seasonRating) {
-          toast({
-            title: "Error",
-            description: "Season rating not found.",
-            variant: "destructive",
-          });
-          setDeletingRatingId(null);
-          setRatingToDelete(null);
-          return;
-        }
-        await deleteRatingSeasonService(fullRating.id, parseInt(currentSeason, 10));
-      } else {
-        // For movies, delete the entire rating
-        await deleteRating(fullRating.id);
-      }
-
-      // Refresh ratings
-      if (onRefreshRatings) {
-        onRefreshRatings();
-      }
-
-      // Clear local state
-      const updatedUserRatings = { ...userRatings };
-      delete updatedUserRatings[userId];
-      setUserRatings(updatedUserRatings);
-
-      const updatedTempRatings = { ...tempUserRatings };
-      delete updatedTempRatings[userId];
-      setTempUserRatings(updatedTempRatings);
-
-      if (editingUserId === userId) {
-        setEditingUserId(null);
-      }
-
-      // Restore the selected season after refresh (for TV series)
-      if (isTVSeries && currentSeason) {
-        // The season will be preserved because we're not resetting selectedSeason
-        // But we need to make sure the useEffect doesn't reset it
-        // The useEffect only runs when selectedSeason changes, so we're good
-      }
-
-      toast({
-        title: "Rating deleted",
-        description: "The rating has been removed.",
-      });
-    } catch (error) {
-      console.error('Error deleting rating:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete rating. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setDeletingRatingId(null);
-      setRatingToDelete(null);
-    }
-  };
-
-  const handleDeleteRatingCancel = () => {
-    setShowDeleteRatingModal(false);
-    setRatingToDelete(null);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const groupId = currentGroupId;
-      if (!groupId) {
-        toast({
-          title: "No group selected",
-          description: "Please select a group to save changes.",
-          variant: "destructive",
-        });
-        setSaving(false);
-        return;
-      }
-
-      // Save ratings if there are any changes
-      // Include both confirmed ratings (userRatings) and temporary ratings (tempUserRatings) if still editing
-      const allRatingsToSave = { ...userRatings };
-      
-      // If a user is currently editing, use their temp rating value
-      if (editingUserId && tempUserRatings[editingUserId]) {
-        allRatingsToSave[editingUserId] = tempUserRatings[editingUserId];
-      }
-      
-      const ratingPromises = Object.entries(allRatingsToSave).map(async ([userId, ratingData]) => {
-        if (ratingData.rating >= 0) {
-          // For TV series, pass the selected season; for movies, don't pass season
-          const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
-          return saveOrUpdateRating({
-            groupId: groupId,
-            titleId: movie.imdbId,
-            note: ratingData.rating,
-            userId: userId,
-            season: season,
-          }, ratings);
-        }
-        return null;
-      });
-
-      await Promise.all(ratingPromises.filter(Boolean));
-
-      // Refresh ratings to get the latest data from batch endpoint
-      if (onRefreshRatings) {
-        await onRefreshRatings();
-      }
-
-      // Close editing states after save (values are already saved)
-      if (editingUserId) {
-        setEditingUserId(null);
-      }
-      
-      // Commit temporary watched date if still editing and close editing state
-      if (isEditingWatchedAt) {
-        setWatchedAt(tempWatchedAt);
-        setIsEditingWatchedAt(false);
-      }
-
-      // Clear local state after successful save
-      setUserRatings({});
-
-      // Update watched status if it changed
-      // Use tempWatchedAt if still editing, otherwise use watchedAt
-      const currentWatchedAt = isEditingWatchedAt ? tempWatchedAt : watchedAt;
-      
-      const baselineWatched =
-        isTVSeries && selectedSeason
-          ? (movie.seasonsWatched?.[selectedSeason]?.watched ?? false)
-          : (movie.watched ?? false);
-      const baselineWatchedAt =
-        isTVSeries && selectedSeason
-          ? (movie.seasonsWatched?.[selectedSeason]?.watchedAt ?? '')
-          : (movie.watchedAt ?? '');
-
-      if (watched !== baselineWatched || currentWatchedAt !== baselineWatchedAt) {
-        const groupId = currentGroupId;
-        if (!groupId) {
-          toast({
-            title: "No group selected",
-            description: "Please select a group to update watched status.",
-            variant: "destructive",
-          });
-          setSaving(false);
-          return;
-        }
-        // For TV series, send the selected season; for movies, don't send season
-        const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
-        await updateMovieWatchedStatus(groupId, movie.imdbId, watched, currentWatchedAt || '', season);
-        
-        // Refresh movies to get the latest data from backend
-        if (onRefreshMovies) {
-          await onRefreshMovies();
-        }
-      }
-
-      // Save movie updates locally
-      // Use tempWatchedAt if still editing, otherwise use watchedAt
-      const finalWatchedAt = isEditingWatchedAt ? tempWatchedAt : watchedAt;
-      
-      const updates: Partial<Movie> = {};
-      if (isTVSeries && selectedSeason) {
-        updates.seasonsWatched = {
-          ...(movie.seasonsWatched || {}),
-          [selectedSeason]: {
-            watched,
-            watchedAt: finalWatchedAt || undefined,
-          },
+      if (isSeasonScope(scope)) {
+        seasonsWatched = {
+          ...(seasonsWatched ?? movie.seasonsWatched ?? {}),
+          [seasonOf(scope)]: { watched, watchedAt: watchedAt || undefined },
         };
       } else {
         updates.watched = watched;
-        updates.watchedAt = finalWatchedAt || '';
+        updates.watchedAt = watchedAt || '';
       }
-      
-      onUpdate(movie.id, updates);
-      
+    }
+
+    if (seasonsWatched) {
+      updates.seasonsWatched = seasonsWatched;
+    }
+
+    return updates;
+  };
+
+  const handleSave = async () => {
+    if (!currentGroupId) {
       toast({
-        title: "Movie updated!",
-        description: "Your movie information, ratings, and comments have been saved.",
+        title: "No group selected",
+        description: "Please select a group to save changes.",
+        variant: "destructive",
       });
+      return;
+    }
+
+    // Set before the flush and cleared only in `finally`, after both
+    // refreshes — this is what keeps Save/Retry (and the disabled region)
+    // inert for the flush's whole real duration, not just the network calls.
+    setSubmitting(true);
+    try {
+      const { ok, failed } = await staged.flush();
+      // One refresh each, after the whole batch — never per staged item. The
+      // flush already ran every call through `Promise.allSettled`; refetching
+      // per item here would turn one save into N races against the same data.
+      await onRefreshRatings?.();
+      await onRefreshMovies?.();
+      if (!ok) {
+        // A toast as well as the in-modal block, because the refresh above can
+        // drop this title out of the movies query — a staged `watched: true`
+        // that committed under the persisted "Unwatched" filter takes the card,
+        // and this modal with it, out of the tree. The block would then render
+        // nowhere and the user would never learn the rest of the save was lost;
+        // toasts render at the app root, so they survive that unmount.
+        toast({
+          title: failed.length > 0
+            // `flush` can also report `ok: false` with nothing attributed (no
+            // signed-in user), where a count would read "0 changes".
+            ? `${failed.length} change${failed.length === 1 ? '' : 's'} could not be saved`
+            : 'Could not save your changes',
+          description: failed[0]?.message,
+          variant: 'destructive',
+        });
+        return; // stay open — StagedChangesSummary carries the per-field detail
+      }
+
+      onUpdate(movie.id, watchedUpdatesFromDraft());
+      toast({
+        title: "Saved",
+        description: "Your changes have been saved.",
+      });
+      staged.reset(); // before onClose, or the discard guard fires on the modal's own success
       onClose();
     } catch (error) {
-      console.error('Error saving:', error);
-      // saveRating/updateRating already unwrap the backend's `errorMessage` and
-      // rethrow it as the Error message — this used to throw that away and show
-      // a generic line instead, so a rejected note (ErrNoteTooPrecise,
-      // ErrInvalidNoteValue, a season conflict) looked like an unexplained
-      // failure. Say what the backend said, and keep the generic line as the
-      // fallback for something that is not an Error.
+      // `flush` swallows its own rejections, but the two refreshes,
+      // `watchedUpdatesFromDraft()` and `onUpdate()` can all throw — and by
+      // then the reducer has already dropped every succeeded field, so without
+      // this the modal would sit there silently holding a half-applied draft.
+      console.error('Error saving changes:', error);
       toast({
         title: "Error saving",
-        description:
-          error instanceof Error && error.message
-            ? error.message
-            : "Failed to save changes. Please try again.",
+        description: "Something went wrong saving your changes. Please try again.",
         variant: "destructive",
       });
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
@@ -501,14 +385,39 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     setShowDeleteModal(false);
   };
 
-  const handleDeleteWatchedDate = async () => {
-    // Only update local state; persist on Save
-    setWatchedAt('');
-    setIsEditingWatchedAt(false);
+  const handleDeleteWatchedDate = () => {
+    // Stages a cleared date; nothing is persisted until Save.
+    staged.stage(visibleScope, 'watchedAt', '', baselines[visibleScope]?.watchedAt ?? '');
+  };
+
+  // The single funnel for every way this dialog can be asked to close: the X,
+  // Escape and an overlay click all arrive as `onOpenChange(false)`, and the
+  // footer Cancel button calls this directly. Routing all of them through one
+  // function is what makes the discard guard cover all of them without
+  // needing `onEscapeKeyDown`/`onPointerDownOutside` handlers of their own.
+  const attemptClose = () => (staged.isDirty ? setShowDiscardModal(true) : onClose());
+
+  const discardAndClose = () => {
+    setShowDiscardModal(false);
+    staged.reset();
+    onClose();
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      // The single funnel for the X, Escape, and an overlay click. All three
+      // (plus the footer Cancel button, which calls `attemptClose` directly)
+      // route through here — gating only the Cancel button's `disabled` prop
+      // would leave the other three doors open. A save already has writes on
+      // the wire, some possibly already committed server-side, so there is
+      // nothing left to honestly discard; refusing to dismiss for the
+      // duration is what keeps the discard dialog's "will be lost" copy true
+      // rather than becoming a lie the moment the flush settles afterwards.
+      onOpenChange={(open) => {
+        if (!open && !(staged.saving || submitting)) attemptClose();
+      }}
+    >
       {/*
         The base dialog is `w-full ... sm:rounded-lg`, so below 640px it went
         edge to edge with square corners — the poster grid showed above and
@@ -517,14 +426,23 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         card floating over the grid. max-h leaves less showing through, and
         overflow-hidden keeps the scrolling body inside the rounded corners.
       */}
-      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[92vh] sm:max-h-[90vh] flex flex-col bg-movie-surface border-border p-0 rounded-lg overflow-hidden">
+      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[92dvh] sm:max-h-[90dvh] flex flex-col bg-movie-surface border-border p-0 rounded-lg overflow-hidden">
         <DialogHeader className="px-4 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4 shrink-0">
           <DialogTitle className="text-movie-blue">{movie.title}</DialogTitle>
         </DialogHeader>
         
         <div className="flex-1 flex flex-col min-h-0">
           {/* On mobile: single scroll container, on desktop: grid with separate scrolls */}
-          <div className="flex-1 overflow-y-auto scrollbar-subtle px-4 sm:px-6 pb-4 sm:pb-5 md:overflow-hidden md:flex md:flex-col">
+          {/*
+            * `overflow-x-hidden` and `min-w-0` are a structural guard, not a fix
+            * for one element. `DialogContent` is a grid, and a grid/flex child's
+            * default `min-width: auto` refuses to shrink below its content — so
+            * any single wide descendant makes the whole dialog scroll sideways,
+            * which is miserable on a phone and gives no clue which child did it.
+            * One overwide heading already caused exactly that. Clamping here
+            * means a future one wraps or clips instead of moving the panel.
+            */}
+          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden scrollbar-subtle px-4 sm:px-6 pb-4 sm:pb-5 md:overflow-hidden md:flex md:flex-col">
             <div className="flex flex-col md:grid md:[grid-template-columns:minmax(0,260px)_minmax(0,1fr)] gap-3 w-full md:flex-1 md:min-h-0">
               {/* Movie Info */}
               <div className="md:overflow-y-auto scrollbar-subtle md:h-full space-y-4 md:px-3 md:pb-3">
@@ -580,7 +498,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
               {/* Movie Status - on mobile scrolls with everything, on desktop scrolls separately */}
               <div className="flex flex-col min-h-0 md:h-full md:flex md:flex-col">
-                <div className="flex-1 overflow-y-auto md:overflow-y-auto scrollbar-subtle space-y-6 md:px-3 md:pb-3 md:min-h-0">
+                <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden md:overflow-y-auto scrollbar-subtle space-y-6 md:px-3 md:pb-3 md:min-h-0">
             {/* Season Selection for TV Series */}
             {isTVSeries && movie.seasons && movie.seasons.length > 0 && (
               <div className="space-y-2">
@@ -655,92 +573,143 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               <div className="flex items-center space-x-2">
                 <Switch
                   id="watched"
-                  checked={watched}
-                  onCheckedChange={setWatched}
+                  checked={shownWatched}
+                  disabled={staged.saving || submitting}
+                  onCheckedChange={(next) =>
+                    staged.stage(visibleScope, 'watched', next, baselines[visibleScope]?.watched ?? false)
+                  }
                 />
                 <Label htmlFor="watched">Watched</Label>
+                {staged.isStaged(visibleScope, 'watched') && (
+                  <>
+                    <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                    <span className="sr-only">(unsaved)</span>
+                  </>
+                )}
               </div>
-              
-              {/* Watched Date */}
-              {watched && (
+
+              {/*
+                Gated on the *effective* (staged-or-baseline) value, not the raw
+                staged one: `updateMovieWatchedStatus` force-blanks `watchedAt`
+                whenever `watched` is false, so a staged date paired with an
+                unwatched state would flush as watched=false and silently drop
+                the date. Hiding the control here is what keeps that unreachable.
+              */}
+              {shownWatched && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-sm text-muted-foreground">Watched on:</Label>
-                    <div className="flex items-center space-x-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          if (!isEditingWatchedAt) {
-                            setTempWatchedAt(watchedAt);
-                          }
-                          setIsEditingWatchedAt(!isEditingWatchedAt);
-                        }}
-                        className="h-6 w-6 p-0"
-                      >
-                        <Edit3 className="h-3 w-3" />
-                      </Button>
+                    <Label className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-1">
+                      Watched on:
+                      {/*
+                        * An empty `input[type=date]` renders blank on iOS — no
+                        * placeholder, nothing — so the row read as a broken empty
+                        * box with no way to tell it was simply unset. Say so here
+                        * instead of relying on the control to imply it.
+                        */}
+                      {!shownWatchedAt && <span className="text-xs italic">not set</span>}
+                      {staged.isStaged(visibleScope, 'watchedAt') && (
+                        <>
+                          <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                          <span className="sr-only">(unsaved)</span>
+                        </>
+                      )}
+                    </Label>
+                    {/*
+                      * Only offered when there is a date to clear. It used to show
+                      * unconditionally, so an already-unset row carried a button
+                      * that did nothing. The explicit hover background matters on
+                      * touch: `variant="ghost"` carries `hover:bg-accent`, which is
+                      * gold in this theme, and a tap leaves `:hover` stuck — so the
+                      * button sat there as a gold blob after being pressed.
+                      */}
+                    {shownWatchedAt && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={handleDeleteWatchedDate}
-                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        disabled={staged.saving || submitting}
+                        className="h-7 px-2 shrink-0 text-xs text-muted-foreground hover:bg-movie-surface-hover hover:text-destructive"
                       >
-                        <XCircle className="h-3 w-3" />
+                        Clear
                       </Button>
-                    </div>
+                    )}
                   </div>
-                  
-                  {isEditingWatchedAt ? (
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        type="date"
-                        value={tempWatchedAt}
-                        onChange={(e) => setTempWatchedAt(e.target.value)}
-                        className="text-sm bg-movie-surface border-border text-foreground [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setWatchedAt(tempWatchedAt);
-                          setIsEditingWatchedAt(false);
-                        }}
-                        className="h-8 px-2"
-                      >
-                        <Check className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setTempWatchedAt(watchedAt);
-                          setIsEditingWatchedAt(false);
-                        }}
-                        className="h-8 px-2"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-foreground">
-                      {watchedAt ? new Date(watchedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'No date set'}
-                    </div>
-                  )}
+
+                  {/*
+                    * The icon sits beside the field, not layered over it. An
+                    * empty `input[type=date]` renders as a literal void on iOS —
+                    * no text, and none of the `-webkit-calendar-picker-indicator`
+                    * styling below applies there — so an unset date looked like a
+                    * dead box, and clearing one looked like nothing had happened.
+                    * An overlay inside the field would have collided with the
+                    * `dd/mm/yyyy` and the picker button that desktop browsers DO
+                    * draw; sitting outside, this reads the same everywhere.
+                    */}
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <Input
+                    type="date"
+                    value={shownWatchedAt}
+                    disabled={staged.saving || submitting}
+                    onChange={(e) =>
+                      staged.stage(
+                        visibleScope,
+                        'watchedAt',
+                        e.target.value,
+                        baselines[visibleScope]?.watchedAt ?? '',
+                      )
+                    }
+                    className="text-base md:text-sm flex-1 min-w-0 h-10 appearance-none bg-movie-surface border-border text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-datetime-edit]:leading-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    />
+                  </div>
                 </div>
               )}
             </div>
 
             {/* User Ratings */}
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
-                <Star className="w-4 h-4" />
+              <h3 className="text-sm font-semibold text-movie-blue flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <Star className="w-4 h-4 shrink-0" />
                 Ratings
+                {/*
+                  * The pending marker sits on the section heading rather than
+                  * on the row: beside a number it just read as a stray glyph,
+                  * whereas here it labels the section that has something
+                  * unsaved in it. Scoped to the visible season, so switching
+                  * seasons does not show a mark for another season's edit.
+                  */}
+                {staged.isStaged(visibleScope, 'rating') && (
+                  <>
+                    <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                    <span className="sr-only">(unsaved changes)</span>
+                  </>
+                )}
               </h3>
               <div className="space-y-3">
                 {users.map((user, index) => {
                   const canEditRating = currentUserId && user.id === currentUserId;
-                  
+
+                  // Only the current user's own rating can be staged, so
+                  // `ratingBaseline` (computed above for `currentUserId`) is
+                  // reused rather than recomputed here for that one row.
+                  // Every other row is a plain, unstaged read of the server
+                  // value — there is no draft to overlay it with.
+                  const baselineForUser = canEditRating
+                    ? ratingBaseline
+                    : (isTVSeries && selectedSeason
+                        ? getRatingForUser(user.id)?.seasonsRatings?.[selectedSeason]?.rating ?? null
+                        : getRatingForUser(user.id)?.rating ?? null);
+
+                  const stagedRating = canEditRating && staged.isStaged(visibleScope, 'rating')
+                    ? (staged.fieldValue(visibleScope, 'rating') as number | null)
+                    : undefined;
+                  const isRatingStaged = stagedRating !== undefined;
+                  // A staged `null` is a pending deletion, not "no rating" —
+                  // it renders struck through rather than as a bare '-' so it
+                  // stays visibly different from a title that was never rated.
+                  const isRatingStagedDeletion = stagedRating === null;
+                  const displayedRating = isRatingStaged ? stagedRating : baselineForUser;
+
                   return (
                     <div key={user.id} className="space-y-2">
                       {index > 0 && <Separator className="bg-border" />}
@@ -748,131 +717,192 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         <Label className="text-sm font-medium text-foreground">{user.name && user.name.trim() !== "" ? user.name : user.username}</Label>
                         <div className="flex items-center justify-between w-full">
                           <div className="flex items-center gap-3">
-                            {editingUserId === user.id ? (
+                            {canEditRating && editingRating && !isRatingStagedDeletion ? (
                               <Input
                                 type="number"
                                 min="0"
                                 max="10"
                                 step="0.1"
-                                value={getUserRating(user.id) ?? ''}
+                                autoFocus
+                                value={ratingDraftText ?? (displayedRating === null ? '' : String(displayedRating))}
+                                disabled={staged.saving || submitting}
                                 onChange={(e) => {
                                   const inputValue = e.target.value;
+
+                                  // An empty box means "nothing staged yet",
+                                  // NOT "rate this 0.0" — staging a zero here
+                                  // would send a real rating nobody asked for.
+                                  // The box still shows empty because the raw
+                                  // text owns what is displayed; without that,
+                                  // unstaging would refill the field from the
+                                  // server value and you could never clear it
+                                  // to type a different one.
                                   if (inputValue === '' || inputValue === '.') {
-                                    updateUserRating(user.id, 0);
+                                    setRatingDraftText(inputValue);
+                                    staged.unstage(visibleScope, 'rating');
                                     return;
                                   }
+
                                   const value = parseFloat(inputValue);
                                   // NaN only for a part-typed value like "-";
-                                  // ignoring it leaves what was there rather
-                                  // than wiping it. Everything else is clamped
-                                  // and rounded by updateUserRating.
-                                  if (!isNaN(value)) {
-                                    updateUserRating(user.id, value);
+                                  // showing it while staging nothing leaves the
+                                  // draft alone until there is a real number.
+                                  if (isNaN(value)) {
+                                    setRatingDraftText(inputValue);
+                                    return;
                                   }
+
+                                  // `normalizeNote` clamps to 0-10 and rounds to
+                                  // one decimal. Reflecting it back into the box
+                                  // whenever it actually changed the value is
+                                  // what stops the field disagreeing with what
+                                  // will be sent: typing "456" used to display
+                                  // 456 while staging 10, and "8.55" displayed
+                                  // four characters of a value that had already
+                                  // become 8.6. Equal values are left exactly as
+                                  // typed, so a trailing "." survives long
+                                  // enough to type "8.5".
+                                  const note = normalizeNote(value);
+                                  setRatingDraftText(note === value ? inputValue : String(note));
+                                  onRatingInput(value);
                                 }}
-                                className="w-20 bg-movie-surface border-border text-sm"
+                                /*
+                                 * `ring-inset` + `ring-offset-0` rather than the
+                                 * base input's `ring-2 ring-offset-2`: that draws
+                                 * 4px OUTSIDE the box, and this field sits flush
+                                 * against the left edge of a scroll container
+                                 * (`overflow-y-auto`), which clipped the focus
+                                 * ring's outer edge clean off. Drawing it inside
+                                 * the border box cannot be clipped by an
+                                 * ancestor at any width.
+                                 */
+                                className="w-20 bg-movie-surface border-border text-base md:text-sm focus-visible:ring-inset focus-visible:ring-offset-0"
                                 placeholder="0.0"
-                                autoFocus
                               />
                             ) : (
-                              <div className="text-sm text-foreground">
-                                {getUserRating(user.id) === null ? '-' : getUserRating(user.id)!.toFixed(1)}
+                              /*
+                               * The pending state is carried by the value's own
+                               * colour rather than by a marker beside it. A
+                               * separate glyph read as noise here and did not
+                               * explain itself; the number turning blue says
+                               * "this is not what the server holds" in the place
+                               * the eye is already looking.
+                               */
+                              <div
+                                className={`text-sm ${
+                                  isRatingStagedDeletion
+                                    ? 'line-through text-muted-foreground'
+                                    : isRatingStaged
+                                      ? 'text-movie-blue font-medium'
+                                      : 'text-foreground'
+                                }`}
+                              >
+                                {displayedRating === null ? '-' : displayedRating.toFixed(1)}
                               </div>
                             )}
-                            <StarRating 
-                              rating={getUserRating(user.id) ?? 0} 
+                            {/*
+                              * No visible marker here — the value's own colour
+                              * carries it (above), and while the editor is open
+                              * the open input is itself the signal. The
+                              * screen-reader text stays: colour alone announces
+                              * nothing, and an open input does not say "pending".
+                              */}
+                            {isRatingStaged && <span className="sr-only">(unsaved)</span>}
+                            <StarRating
+                              rating={displayedRating ?? 0}
                               readonly={true}
                               size={20}
                             />
                           </div>
-                          {canEditRating && editingUserId === user.id ? (
+                          {canEditRating && (
                             <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  // Confirm: commit temp rating to userRatings
-                                  if (tempUserRatings[user.id]) {
-                                    setUserRatings(prev => ({
-                                      ...prev,
-                                      [user.id]: tempUserRatings[user.id]
-                                    }));
-                                  }
-                                  setEditingUserId(null);
-                                }}
-                                className="h-6 w-6 p-0"
-                              >
-                                <Check className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  // Cancel: revert temp rating
-                                  const updatedTemp = { ...tempUserRatings };
-                                  delete updatedTemp[user.id];
-                                  setTempUserRatings(updatedTemp);
-                                  setEditingUserId(null);
-                                }}
-                                className="h-6 w-6 p-0"
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
+                              {editingRating ? (
+                                <>
+                                  {/*
+                                    * "Done" closes the editor and KEEPS what was
+                                    * typed. It is not a save — the value is in
+                                    * the draft either way and only the footer's
+                                    * Save writes anything — it just collapses
+                                    * the field back to text, which is why the
+                                    * heading keeps its dot afterwards.
+                                    */}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label="Done editing your rating"
+                                    onClick={() => {
+                                      setEditingRating(false);
+                                      setRatingDraftText(null);
+                                    }}
+                                    disabled={staged.saving || submitting}
+                                    className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
+                                  >
+                                    <Check className="h-3 w-3" />
+                                  </Button>
+                                  {/* Throws the pending change away and closes. */}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label="Discard this rating change"
+                                    onClick={() => {
+                                      staged.unstage(visibleScope, 'rating');
+                                      setEditingRating(false);
+                                      setRatingDraftText(null);
+                                    }}
+                                    disabled={staged.saving || submitting}
+                                    className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              ) : isRatingStaged ? (
+                                // Collapsed with something pending — a typed
+                                // value or a staged deletion. One button undoes
+                                // either, which is what "undo" means for both.
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label="Undo this rating change"
+                                  onClick={() => staged.unstage(visibleScope, 'rating')}
+                                  disabled={staged.saving || submitting}
+                                  className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label="Edit your rating"
+                                  onClick={() => {
+                                    setRatingDraftText(
+                                      displayedRating === null ? '' : String(displayedRating),
+                                    );
+                                    setEditingRating(true);
+                                  }}
+                                  disabled={staged.saving || submitting}
+                                  className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
+                                >
+                                  <Edit3 className="h-3 w-3" />
+                                </Button>
+                              )}
+                              {!editingRating && !isRatingStaged && ratingBaseline !== null ? (
+                                // The branch condition is the whole existence
+                                // check, so `hasExistingRating` is a constant
+                                // `true` here rather than a second test of it.
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label="Remove your rating"
+                                  onClick={() => staged.stageRatingDelete(visibleScope, true)}
+                                  disabled={staged.saving || submitting}
+                                  className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              ) : null}
                             </div>
-                          ) : canEditRating ? (
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  // Initialize temp rating with current value
-                                  // For TV series, get the season rating; for movies, get the regular rating
-                                  let currentRating: number | null = null;
-                                  if (isTVSeries && selectedSeason) {
-                                    const apiRating = getRatingForUser(user.id);
-                                    currentRating = apiRating?.seasonsRatings?.[selectedSeason]?.rating ?? null;
-                                  } else {
-                                    const apiRating = getRatingForUser(user.id);
-                                    currentRating = apiRating?.rating ?? null;
-                                  }
-                                  // Use 0 as default when starting to edit (user can change it)
-                                  setTempUserRatings(prev => ({
-                                    ...prev,
-                                    [user.id]: { rating: currentRating ?? 0 }
-                                  }));
-                                  setEditingUserId(user.id);
-                                }}
-                                className="h-6 w-6 p-0"
-                              >
-                                <Edit3 className="h-3 w-3" />
-                              </Button>
-                              {(() => {
-                                // Check if rating exists
-                                const apiRating = getRatingForUser(user.id);
-                                let hasRating = false;
-                                if (isTVSeries && selectedSeason) {
-                                  hasRating = apiRating?.seasonsRatings?.[selectedSeason] !== undefined;
-                                } else {
-                                  hasRating = apiRating?.rating !== undefined;
-                                }
-                                
-                                if (hasRating) {
-                                  return (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleDeleteRatingClick(user.id)}
-                                      disabled={deletingRatingId === user.id}
-                                      className="h-6 w-6 p-0"
-                                    >
-                                      <Trash2 className={`h-3 w-3 ${deletingRatingId === user.id ? 'opacity-50' : ''}`} />
-                                    </Button>
-                                  );
-                                }
-                                return null;
-                              })()}
-                            </div>
-                          ) : null}
+                          )}
                         </div>
                       </div>
                     </div>
@@ -894,22 +924,56 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               </div>
 
               {/* Actions - Fixed at bottom on desktop, normal flow on mobile */}
-              <div className="flex gap-2 pt-4 pb-4 px-3 md:px-3 md:mt-auto md:shrink-0 shrink-0 border-t border-border">
-                <Button 
-                  onClick={handleSave} 
-                  disabled={saving}
-                  className="flex-1 bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light"
-                >
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </Button>
-                <Button 
-                  variant="destructive" 
-                  size="icon"
-                  onClick={handleDeleteClick}
-                  className="shrink-0"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+              <div className="shrink-0 md:mt-auto px-3 space-y-3">
+                {/*
+                  No wrapper div around the summary: when it renders null
+                  (nothing off-screen, nothing failed), `space-y-3` sees no
+                  preceding sibling at all and adds no gap above the button
+                  row — a wrapper div would still count as one and leave a
+                  dangling gap even with nothing inside it.
+                */}
+                <StagedChangesSummary
+                  changes={staged.changes}
+                  visibleScope={visibleScope}
+                  saving={staged.saving || submitting}
+                  onRetry={handleSave}
+                />
+                <div className="flex gap-2 pb-4 border-t border-border pt-4">
+                  {/*
+                    `variant="outline"` inherits a gold `hover:bg-accent` from
+                    this theme's `--accent` — the same leak the blue Save
+                    button next to it exists to avoid — so both states are
+                    overridden explicitly rather than left default.
+                  */}
+                  <Button
+                    variant="outline"
+                    onClick={attemptClose}
+                    disabled={staged.saving || submitting}
+                    className="flex-1 min-w-0 border-border bg-movie-surface hover:bg-movie-surface-hover hover:text-foreground"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={!staged.isDirty || staged.saving || submitting}
+                    className="flex-1 min-w-0 truncate bg-movie-blue hover:bg-movie-blue-light"
+                  >
+                    {staged.saving || submitting
+                      ? 'Saving…'
+                      : staged.isDirty
+                        ? `Save (${staged.changeCount})`
+                        : 'Save'}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    onClick={handleDeleteClick}
+                    disabled={staged.saving || submitting}
+                    className="shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </div>
             </div>
@@ -924,48 +988,38 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         onConfirm={handleDeleteConfirm}
         loading={deleting}
       />
-      
-      <AlertDialog open={showDeleteRatingModal} onOpenChange={handleDeleteRatingCancel}>
+
+      <AlertDialog open={showDiscardModal} onOpenChange={(open) => { if (!open) setShowDiscardModal(false); }}>
         <AlertDialogContent className="bg-movie-surface border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive">
-              Delete Rating
-            </AlertDialogTitle>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
             <AlertDialogDescription className="text-muted-foreground">
-              {isTVSeries && selectedSeason
-                ? `Are you sure you want to delete the rating for Season ${selectedSeason}? (Other seasons will be kept)`
-                : 'Are you sure you want to delete this rating? This action cannot be undone.'}
+              You have {staged.changeCount} unsaved change{staged.changeCount === 1 ? '' : 's'}. They will be lost.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel 
-              onClick={handleDeleteRatingCancel}
-              disabled={deletingRatingId !== null}
-              className="bg-movie-surface border-border hover:bg-movie-surface/80"
+            {/*
+              `AlertDialogCancel` is the `outline` button variant, whose
+              `hover:text-accent-foreground` (near-black — this theme's accent
+              is gold) survives overriding `hover:bg-*` on its own and would
+              leave this label at roughly 1.2:1 on `--movie-surface`. Same
+              `hover:text-foreground` guard as the footer Cancel button.
+            */}
+            <AlertDialogCancel
+              onClick={() => setShowDiscardModal(false)}
+              className="bg-movie-surface border-border hover:bg-movie-surface/80 hover:text-foreground"
             >
-              Cancel
+              Keep editing
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteRatingConfirm}
-              disabled={deletingRatingId !== null}
+              onClick={discardAndClose}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingRatingId !== null ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-destructive-foreground/30 border-t-destructive-foreground rounded-full animate-spin" />
-                  Deleting...
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Trash2 className="w-4 h-4" />
-                  Delete Rating
-                </div>
-              )}
+              Discard changes
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      
     </Dialog>
   );
 };

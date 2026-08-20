@@ -225,9 +225,16 @@ export const CommentsSection = ({
   return (
     <>
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
-          <MessageCircle className="w-4 h-4" />
+        {/*
+          * `flex-wrap` is load-bearing: the heading plus this caption is wider
+          * than the modal at 390px, and without wrapping it forced the whole
+          * dialog to scroll sideways — the caption was pushing the panel's
+          * content box past the viewport rather than dropping to a second line.
+          */}
+        <h3 className="text-sm font-semibold text-movie-blue flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <MessageCircle className="w-4 h-4 shrink-0" />
           Comments ({comments.length})
+          <span className="text-xs text-muted-foreground font-normal">Posted immediately</span>
         </h3>
         <div className="space-y-3 overflow-x-hidden max-h-[300px] overflow-y-auto scrollbar-subtle">
           {loadingComments ? (
@@ -267,7 +274,7 @@ export const CommentsSection = ({
                   </div>
                   {isEditing ? (
                     <div className="space-y-2">
-                      <Textarea value={editingCommentText} onChange={(e) => setEditingCommentText(e.target.value)} placeholder="Write your comment..." className="bg-background border-border resize-none min-h-[70px] text-sm" rows={3} />
+                      <Textarea value={editingCommentText} onChange={(e) => setEditingCommentText(e.target.value)} placeholder="Write your comment..." className="bg-background border-border resize-none min-h-[70px] focus-visible:ring-inset focus-visible:ring-offset-0" rows={3} />
                       <div className="flex gap-2 justify-end">
                         <Button variant="outline" size="sm" onClick={handleCancelEditComment} disabled={savingComment} className="h-8 text-xs">Cancel</Button>
                         <Button size="sm" onClick={() => handleSaveEditComment(comment.id)} disabled={savingComment || !editingCommentText.trim()} className="h-8 text-xs bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light">{savingComment ? 'Saving...' : 'Save'}</Button>
@@ -291,7 +298,7 @@ export const CommentsSection = ({
 
         {showAddCommentForm && (
           <div className="space-y-2 pt-2 border-t border-border">
-            <Textarea value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} placeholder="Write your comment..." className="bg-background border-border resize-none min-h-[70px] text-sm" rows={3} />
+            <Textarea value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} placeholder="Write your comment..." className="bg-background border-border resize-none min-h-[70px] focus-visible:ring-inset focus-visible:ring-offset-0" rows={3} />
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => { setShowAddCommentForm(false); setNewCommentText(''); }} disabled={addingComment} className="flex-1 h-8 text-xs">Cancel</Button>
               <Button onClick={handleAddComment} disabled={addingComment || !newCommentText.trim()} className="flex-1 h-8 text-xs bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light">{addingComment ? 'Adding...' : 'Add Comment'}</Button>
