@@ -424,7 +424,16 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         
         <div className="flex-1 flex flex-col min-h-0">
           {/* On mobile: single scroll container, on desktop: grid with separate scrolls */}
-          <div className="flex-1 overflow-y-auto scrollbar-subtle px-4 sm:px-6 pb-4 sm:pb-5 md:overflow-hidden md:flex md:flex-col">
+          {/*
+            * `overflow-x-hidden` and `min-w-0` are a structural guard, not a fix
+            * for one element. `DialogContent` is a grid, and a grid/flex child's
+            * default `min-width: auto` refuses to shrink below its content — so
+            * any single wide descendant makes the whole dialog scroll sideways,
+            * which is miserable on a phone and gives no clue which child did it.
+            * One overwide heading already caused exactly that. Clamping here
+            * means a future one wraps or clips instead of moving the panel.
+            */}
+          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden scrollbar-subtle px-4 sm:px-6 pb-4 sm:pb-5 md:overflow-hidden md:flex md:flex-col">
             <div className="flex flex-col md:grid md:[grid-template-columns:minmax(0,260px)_minmax(0,1fr)] gap-3 w-full md:flex-1 md:min-h-0">
               {/* Movie Info */}
               <div className="md:overflow-y-auto scrollbar-subtle md:h-full space-y-4 md:px-3 md:pb-3">
@@ -480,7 +489,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
               {/* Movie Status - on mobile scrolls with everything, on desktop scrolls separately */}
               <div className="flex flex-col min-h-0 md:h-full md:flex md:flex-col">
-                <div className="flex-1 overflow-y-auto md:overflow-y-auto scrollbar-subtle space-y-6 md:px-3 md:pb-3 md:min-h-0">
+                <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden md:overflow-y-auto scrollbar-subtle space-y-6 md:px-3 md:pb-3 md:min-h-0">
             {/* Season Selection for TV Series */}
             {isTVSeries && movie.seasons && movie.seasons.length > 0 && (
               <div className="space-y-2">
@@ -580,8 +589,15 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               {shownWatched && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Label className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-1">
                       Watched on:
+                      {/*
+                        * An empty `input[type=date]` renders blank on iOS — no
+                        * placeholder, nothing — so the row read as a broken empty
+                        * box with no way to tell it was simply unset. Say so here
+                        * instead of relying on the control to imply it.
+                        */}
+                      {!shownWatchedAt && <span className="text-xs italic">not set</span>}
                       {staged.isStaged(visibleScope, 'watchedAt') && (
                         <>
                           <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
@@ -589,15 +605,26 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         </>
                       )}
                     </Label>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleDeleteWatchedDate}
-                      disabled={staged.saving || submitting}
-                      className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                    >
-                      <XCircle className="h-3 w-3" />
-                    </Button>
+                    {/*
+                      * Only offered when there is a date to clear. It used to show
+                      * unconditionally, so an already-unset row carried a button
+                      * that did nothing. The explicit hover background matters on
+                      * touch: `variant="ghost"` carries `hover:bg-accent`, which is
+                      * gold in this theme, and a tap leaves `:hover` stuck — so the
+                      * button sat there as a gold blob after being pressed.
+                      */}
+                    {shownWatchedAt && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Clear the watched date"
+                        onClick={handleDeleteWatchedDate}
+                        disabled={staged.saving || submitting}
+                        className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:bg-movie-surface-hover hover:text-destructive"
+                      >
+                        <XCircle className="h-3 w-3" />
+                      </Button>
+                    )}
                   </div>
 
                   <Input
@@ -612,7 +639,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         baselines[visibleScope]?.watchedAt ?? '',
                       )
                     }
-                    className="text-sm bg-movie-surface border-border text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    className="text-sm w-full max-w-full h-10 appearance-none bg-movie-surface border-border text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-datetime-edit]:leading-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   />
                 </div>
               )}
@@ -620,8 +647,8 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
 
             {/* User Ratings */}
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
-                <Star className="w-4 h-4" />
+              <h3 className="text-sm font-semibold text-movie-blue flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <Star className="w-4 h-4 shrink-0" />
                 Ratings
                 {/*
                   * The pending marker sits on the section heading rather than

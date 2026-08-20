@@ -225,8 +225,14 @@ export const CommentsSection = ({
   return (
     <>
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
-          <MessageCircle className="w-4 h-4" />
+        {/*
+          * `flex-wrap` is load-bearing: the heading plus this caption is wider
+          * than the modal at 390px, and without wrapping it forced the whole
+          * dialog to scroll sideways — the caption was pushing the panel's
+          * content box past the viewport rather than dropping to a second line.
+          */}
+        <h3 className="text-sm font-semibold text-movie-blue flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <MessageCircle className="w-4 h-4 shrink-0" />
           Comments ({comments.length})
           <span className="text-xs text-muted-foreground font-normal">Posted immediately</span>
         </h3>
