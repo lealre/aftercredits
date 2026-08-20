@@ -1,3 +1,4 @@
+import { roundToOneDecimal } from '@/lib/rating';
 import { ActivityEvent } from '@/types/activity';
 
 /**
@@ -42,10 +43,20 @@ const stringAt = (event: ActivityEvent, key: string): string | null => {
   return typeof value === 'string' && value !== '' ? value : null;
 };
 
-/** A rating as it should appear in a sentence, or null when it is absent. */
+/**
+ * A rating as it should appear in a sentence, or null when it is absent.
+ *
+ * Rounded rather than printed raw, because the payload's number cannot be
+ * trusted to be the one-decimal value it is meant to be. `note` is stored as a
+ * `REAL` — a float32 — so 5.6 is really 5.5999999046325684, and the event
+ * payload widens it to float64, which prints every one of those digits. A feed
+ * line reading "rated 1917 with note 5.599999904632568" is the visible end of
+ * that. Rounding here also fixes events ALREADY recorded with the noise, which
+ * a backend-side fix cannot do.
+ */
 const noteAt = (event: ActivityEvent, key: 'note' | 'previousNote'): string | null => {
   const value = numberAt(event, key);
-  return value === null ? null : String(value);
+  return value === null ? null : String(roundToOneDecimal(value));
 };
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
