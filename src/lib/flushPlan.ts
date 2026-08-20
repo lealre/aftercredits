@@ -1,5 +1,4 @@
 import {
-  TITLE_SCOPE,
   compareScopes,
   isSeasonScope,
   seasonOf,
@@ -125,3 +124,25 @@ export const findRatingToDelete = (
   groupId: string,
 ): Rating | undefined =>
   ratings.find((r) => r.userId === userId && r.titleId === titleId && r.groupId === groupId);
+
+/** Which delete endpoint a `ratingDelete` item needs, and with what arguments. */
+export type RatingDeleteCall =
+  | { target: 'season'; ratingId: string; season: number }
+  | { target: 'title'; ratingId: string };
+
+/**
+ * Decide whether a staged rating deletion removes one season or the whole
+ * rating row.
+ *
+ * One row carries the title's own note AND every season's, so taking the
+ * title branch for a season edit destroys the other seasons' notes with it —
+ * an unrecoverable over-delete from a one-character mistake. Season `0` is a
+ * valid season and falsy, so the test is `!== undefined`, never truthiness.
+ */
+export const planRatingDelete = (
+  ratingId: string,
+  season: number | undefined,
+): RatingDeleteCall =>
+  season !== undefined
+    ? { target: 'season', ratingId, season }
+    : { target: 'title', ratingId };

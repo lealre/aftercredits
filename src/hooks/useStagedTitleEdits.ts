@@ -13,6 +13,7 @@ import {
   attributeOutcome,
   findRatingToDelete,
   planFlush,
+  planRatingDelete,
   type FlushItem,
   type ScopeBaseline,
 } from '@/lib/flushPlan';
@@ -66,9 +67,10 @@ const runItem = (
       if (!existing) {
         return Promise.reject(new Error('This rating no longer exists. Reload and try again.'));
       }
-      return item.season !== undefined
-        ? deleteRatingSeason(existing.id, item.season)
-        : deleteRating(existing.id);
+      const call = planRatingDelete(existing.id, item.season);
+      return call.target === 'season'
+        ? deleteRatingSeason(call.ratingId, call.season)
+        : deleteRating(call.ratingId);
     }
 
     default: {
@@ -84,8 +86,11 @@ const runItem = (
  *
  * `groupId` is not part of `ScopeKey`, so a draft staged while looking at one
  * group would otherwise survive switching to another and flush against it —
- * a rating silently written into the wrong group. The reset effect below is
- * what prevents that; it fires on `groupId` changing, not on mount.
+ * a rating silently written into the wrong group. The render-time reset
+ * dispatch below is what prevents that; it fires on `groupId` changing, not on
+ * mount. It is deliberately not an effect: an effect runs after commit, so
+ * there would be one render in which `flush` still sees the old group's
+ * draft.
  */
 export const useStagedTitleEdits = (args: {
   groupId: string | null;

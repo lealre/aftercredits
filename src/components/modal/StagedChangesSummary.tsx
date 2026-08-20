@@ -64,10 +64,23 @@ export const StagedChangesSummary = ({
       )}
 
       {failedChanges.length > 0 && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-2">
+        // A live region because this block appears in place after a save that
+        // moves no focus and changes nothing else on screen — otherwise a
+        // partial failure is completely silent to assistive technology. The
+        // icon is decorative and would only add noise to the announcement.
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-2"
+        >
           <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            {failedChanges.length} of {changes.length} changes could not be saved
+            <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+            {/*
+              No denominator: `recordResults` drops every succeeded field from
+              the draft, and `changes` derives from the draft, so once a flush
+              has settled `changes` IS the failure set — "n of n" is the only
+              thing a fraction here could ever say.
+            */}
+            {failedChanges.length} change{failedChanges.length === 1 ? '' : 's'} could not be saved
           </div>
           <div className="max-h-32 overflow-y-auto scrollbar-subtle space-y-1">
             {failedChanges.map((change) => (

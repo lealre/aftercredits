@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Movie, User, Rating, SeasonRating } from '@/types/movie';
 import {
   Dialog,
@@ -35,7 +35,7 @@ import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { CommentsSection } from './modal/CommentsSection';
 import { StagedChangesSummary } from './modal/StagedChangesSummary';
-import { updateMovieWatchedStatus, deleteMovie } from '@/services/backendService';
+import { deleteMovie } from '@/services/backendService';
 import { getUserId } from '@/services/authService';
 import { useActiveGroupId } from '@/hooks/useActiveGroupId';
 import { useEpisodes } from '@/hooks/useEpisodes';
@@ -187,15 +187,17 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   /**
    * The watched/watchedAt half of what a successful flush just persisted, in
    * the `Partial<Movie>` shape `onUpdate` expects — mirrors the payload the
-   * pre-staging code built inline. Reads `staged.changes` rather than
-   * `baselines`/`movie`: those are only current as of the last render, and by
-   * the time this runs (after an `await`) they may already be one flush
-   * behind. `staged.changes`, `staged.isStaged` and `staged.fieldValue` all
-   * close over the same pre-flush draft snapshot for the lifetime of this
-   * call, so they stay a matched, uncontended set even though the reducer
-   * has already been dispatched into by the flush.
+   * pre-staging code built inline. It walks the scopes whose watched pair the
+   * draft touched and overlays each staged value on that scope's baseline, so
+   * a scope where only one half of the pair was staged still reports both.
+   *
+   * Everything it reads — `staged.changes`, `staged.isStaged`,
+   * `staged.fieldValue`, `baselines`, `movie` — comes off one render closure,
+   * so they are a matched pre-flush snapshot even though the reducer has
+   * already been dispatched into by the flush that just finished. That is what
+   * makes it safe to call after an `await`.
    */
-  const updatesFromBaselines = (): Partial<Movie> => {
+  const watchedUpdatesFromDraft = (): Partial<Movie> => {
     const scopesWithWatchedChanges = new Set<ScopeKey>(
       staged.changes
         .filter((change) => change.field === 'watched' || change.field === 'watchedAt')
@@ -246,21 +248,49 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     // inert for the flush's whole real duration, not just the network calls.
     setSubmitting(true);
     try {
-      const { ok } = await staged.flush();
+      const { ok, failed } = await staged.flush();
       // One refresh each, after the whole batch — never per staged item. The
       // flush already ran every call through `Promise.allSettled`; refetching
       // per item here would turn one save into N races against the same data.
       await onRefreshRatings?.();
       await onRefreshMovies?.();
-      if (!ok) return; // stay open — StagedChangesSummary already renders the failure block
+      if (!ok) {
+        // A toast as well as the in-modal block, because the refresh above can
+        // drop this title out of the movies query — a staged `watched: true`
+        // that committed under the persisted "Unwatched" filter takes the card,
+        // and this modal with it, out of the tree. The block would then render
+        // nowhere and the user would never learn the rest of the save was lost;
+        // toasts render at the app root, so they survive that unmount.
+        toast({
+          title: failed.length > 0
+            // `flush` can also report `ok: false` with nothing attributed (no
+            // signed-in user), where a count would read "0 changes".
+            ? `${failed.length} change${failed.length === 1 ? '' : 's'} could not be saved`
+            : 'Could not save your changes',
+          description: failed[0]?.message,
+          variant: 'destructive',
+        });
+        return; // stay open — StagedChangesSummary carries the per-field detail
+      }
 
-      onUpdate(movie.id, updatesFromBaselines());
+      onUpdate(movie.id, watchedUpdatesFromDraft());
       toast({
         title: "Saved",
         description: "Your changes have been saved.",
       });
       staged.reset(); // before onClose, or the discard guard fires on the modal's own success
       onClose();
+    } catch (error) {
+      // `flush` swallows its own rejections, but the two refreshes,
+      // `watchedUpdatesFromDraft()` and `onUpdate()` can all throw — and by
+      // then the reducer has already dropped every succeeded field, so without
+      // this the modal would sit there silently holding a half-applied draft.
+      console.error('Error saving changes:', error);
+      toast({
+        title: "Error saving",
+        description: "Something went wrong saving your changes. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -604,8 +634,17 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 disabled={staged.saving || submitting}
                                 onChange={(e) => {
                                   const inputValue = e.target.value;
+                                  // Clearing the field is not "rate this 0.0".
+                                  // The input is permanently visible now (it
+                                  // used to appear only while explicitly
+                                  // editing, with a discard button beside it),
+                                  // so staging 0 here would let select-all-
+                                  // delete arm the discard guard and send a
+                                  // real zero. Dropping the staged value
+                                  // returns the field to the server baseline;
+                                  // a genuine zero is still typeable as "0".
                                   if (inputValue === '' || inputValue === '.') {
-                                    onRatingInput(0);
+                                    staged.unstage(visibleScope, 'rating');
                                     return;
                                   }
                                   const value = parseFloat(inputValue);
@@ -659,10 +698,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   <X className="h-3 w-3" />
                                 </Button>
                               ) : ratingBaseline !== null ? (
+                                // The branch condition is the whole existence
+                                // check, so `hasExistingRating` is a constant
+                                // `true` here rather than a second test of it.
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => staged.stageRatingDelete(visibleScope, ratingBaseline !== null)}
+                                  onClick={() => staged.stageRatingDelete(visibleScope, true)}
                                   disabled={staged.saving || submitting}
                                   className="h-6 w-6 p-0"
                                 >
@@ -736,6 +778,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     variant="destructive"
                     size="icon"
                     onClick={handleDeleteClick}
+                    disabled={staged.saving || submitting}
                     className="shrink-0"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -765,9 +808,16 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
+            {/*
+              `AlertDialogCancel` is the `outline` button variant, whose
+              `hover:text-accent-foreground` (near-black — this theme's accent
+              is gold) survives overriding `hover:bg-*` on its own and would
+              leave this label at roughly 1.2:1 on `--movie-surface`. Same
+              `hover:text-foreground` guard as the footer Cancel button.
+            */}
             <AlertDialogCancel
               onClick={() => setShowDiscardModal(false)}
-              className="bg-movie-surface border-border hover:bg-movie-surface/80"
+              className="bg-movie-surface border-border hover:bg-movie-surface/80 hover:text-foreground"
             >
               Keep editing
             </AlertDialogCancel>

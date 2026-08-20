@@ -94,6 +94,29 @@ describe('stagedEditsReducer', () => {
     ]);
   });
 
+  it('clears a recorded failure when the retry succeeds', () => {
+    const failed: StagedState = {
+      drafts: { [S1]: { watched: true }, [S2]: { rating: 9 } },
+      failures: [{ scope: S2, field: 'rating', message: 'boom' }],
+    };
+    const s = reduce(failed, {
+      type: 'recordResults',
+      succeeded: [{ scope: S2, field: 'rating' }],
+      failed: [],
+    });
+    expect(s.failures).toEqual([]);
+    expect(s.drafts).toEqual({ [S1]: { watched: true } });
+  });
+
+  it('overwrites an already-staged numeric rating with a staged deletion', () => {
+    let s = reduce(initialStagedState, {
+      type: 'stage', scope: S1, field: 'watched', value: true, baseline: false,
+    });
+    s = reduce(s, { type: 'stage', scope: S1, field: 'rating', value: 7.5, baseline: 8 });
+    s = reduce(s, { type: 'stageRatingDelete', scope: S1, hasExistingRating: true });
+    expect(s.drafts[S1]).toEqual({ watched: true, rating: null });
+  });
+
   it('clears a recorded failure when the field is re-staged', () => {
     const failed: StagedState = {
       drafts: { [S2]: { rating: 9 } },

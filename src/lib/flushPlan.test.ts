@@ -5,6 +5,7 @@ import {
   attributeOutcome,
   findRatingToDelete,
   planFlush,
+  planRatingDelete,
   type FlushItem,
   type ScopeBaseline,
 } from './flushPlan';
@@ -69,6 +70,32 @@ describe('planFlush', () => {
     };
     expect(planFlush(state, baselines).map((i) => i.kind)).toEqual([
       'watched', 'rating', 'ratingDelete',
+    ]);
+  });
+
+  it('falls back to unwatched-and-undated for a scope with no baseline entry', () => {
+    // The normal path, not an edge case: a season only gains a `seasonsWatched`
+    // entry once it has been saved, so the first time one is marked watched
+    // there is no baseline key for it at all.
+    const state: StagedState = { drafts: { [seasonScope('7')]: { watched: true } }, failures: [] };
+    expect(planFlush(state, baselines)).toEqual([
+      {
+        kind: 'watched', scope: seasonScope('7'), season: 7,
+        watched: true, watchedAt: '', fields: ['watched'],
+      },
+    ]);
+  });
+
+  it('fills the unstaged half from that same fallback baseline', () => {
+    const state: StagedState = {
+      drafts: { [seasonScope('7')]: { watchedAt: '2026-08-01' } },
+      failures: [],
+    };
+    expect(planFlush(state, baselines)).toEqual([
+      {
+        kind: 'watched', scope: seasonScope('7'), season: 7,
+        watched: false, watchedAt: '2026-08-01', fields: ['watchedAt'],
+      },
     ]);
   });
 
@@ -139,7 +166,20 @@ describe('findRatingToDelete', () => {
 
   it('matches on (userId, titleId, groupId) together', () => {
     const target = rating({ id: 'r-target' });
-    const found = findRatingToDelete([target], 'u1', 'tt1', 'g1');
+    // One decoy per term, each sharing the other two with the target and each
+    // listed before it: drop any single comparison from the predicate and
+    // `find` returns a decoy instead of still passing on a one-row array.
+    const found = findRatingToDelete(
+      [
+        rating({ id: 'r-other-user', userId: 'u2' }),
+        rating({ id: 'r-other-title', titleId: 'tt2' }),
+        rating({ id: 'r-other-group', groupId: 'g2' }),
+        target,
+      ],
+      'u1',
+      'tt1',
+      'g1',
+    );
     expect(found).toBe(target);
   });
 
@@ -147,5 +187,19 @@ describe('findRatingToDelete', () => {
     const otherGroup = rating({ id: 'r-other-group', groupId: 'g2' });
     const found = findRatingToDelete([otherGroup], 'u1', 'tt1', 'g1');
     expect(found).toBeUndefined();
+  });
+});
+
+describe('planRatingDelete', () => {
+  it('deletes one season when the item carries a season', () => {
+    expect(planRatingDelete('r1', 2)).toEqual({ target: 'season', ratingId: 'r1', season: 2 });
+  });
+
+  it('deletes the whole rating row when there is no season', () => {
+    expect(planRatingDelete('r1', undefined)).toEqual({ target: 'title', ratingId: 'r1' });
+  });
+
+  it('treats season 0 as a season rather than as absent', () => {
+    expect(planRatingDelete('r1', 0)).toEqual({ target: 'season', ratingId: 'r1', season: 0 });
   });
 });
