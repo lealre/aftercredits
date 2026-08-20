@@ -687,22 +687,34 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 placeholder="0.0"
                               />
                             ) : (
+                              /*
+                               * The pending state is carried by the value's own
+                               * colour rather than by a marker beside it. A
+                               * separate glyph read as noise here and did not
+                               * explain itself; the number turning blue says
+                               * "this is not what the server holds" in the place
+                               * the eye is already looking.
+                               */
                               <div
                                 className={`text-sm ${
                                   isRatingStagedDeletion
                                     ? 'line-through text-muted-foreground'
-                                    : 'text-foreground'
+                                    : isRatingStaged
+                                      ? 'text-movie-blue font-medium'
+                                      : 'text-foreground'
                                 }`}
                               >
                                 {displayedRating === null ? '-' : displayedRating.toFixed(1)}
                               </div>
                             )}
-                            {isRatingStaged && (
-                              <>
-                                <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
-                                <span className="sr-only">(unsaved)</span>
-                              </>
-                            )}
+                            {/*
+                              * No visible marker here — the value's own colour
+                              * carries it (above), and while the editor is open
+                              * the open input is itself the signal. The
+                              * screen-reader text stays: colour alone announces
+                              * nothing, and an open input does not say "pending".
+                              */}
+                            {isRatingStaged && <span className="sr-only">(unsaved)</span>}
                             <StarRating
                               rating={displayedRating ?? 0}
                               readonly={true}
