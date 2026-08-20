@@ -19,17 +19,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Star, Trash2, ExternalLink, X, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { CommentsSection } from './modal/CommentsSection';
+import { StagedChangesSummary } from './modal/StagedChangesSummary';
 import { updateMovieWatchedStatus, deleteMovie } from '@/services/backendService';
 import { getUserId } from '@/services/authService';
 import { useActiveGroupId } from '@/hooks/useActiveGroupId';
 import { useEpisodes } from '@/hooks/useEpisodes';
 import { useStagedTitleEdits } from '@/hooks/useStagedTitleEdits';
-import { TITLE_SCOPE, seasonScope, type ScopeKey } from '@/lib/stagedEdits';
+import { TITLE_SCOPE, seasonScope, isSeasonScope, seasonOf, type ScopeKey } from '@/lib/stagedEdits';
 import type { ScopeBaseline } from '@/lib/flushPlan';
 import { normalizeNote } from '@/lib/rating';
 
@@ -61,9 +72,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const { data: episodes = [], isLoading: episodesLoading, isError: episodesError } = useEpisodes(movie.imdbId, isOpen && isTVSeries);
 
   const [selectedSeason, setSelectedSeason] = useState<string>('');
-  const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showDiscardModal, setShowDiscardModal] = useState(false);
 
   // Reset which season is shown each time the modal opens. `movie.id` is
   // stable for the lifetime of a MovieCard's modal instance (one card, one
@@ -166,95 +177,78 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     staged.stage(visibleScope, 'rating', note, ratingBaseline);
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const groupId = currentGroupId;
-      if (!groupId) {
-        toast({
-          title: "No group selected",
-          description: "Please select a group to save changes.",
-          variant: "destructive",
-        });
-        setSaving(false);
-        return;
-      }
+  /**
+   * The watched/watchedAt half of what a successful flush just persisted, in
+   * the `Partial<Movie>` shape `onUpdate` expects — mirrors the payload the
+   * pre-staging code built inline. Reads `staged.changes` rather than
+   * `baselines`/`movie`: those are only current as of the last render, and by
+   * the time this runs (after an `await`) they may already be one flush
+   * behind. `staged.changes`, `staged.isStaged` and `staged.fieldValue` all
+   * close over the same pre-flush draft snapshot for the lifetime of this
+   * call, so they stay a matched, uncontended set even though the reducer
+   * has already been dispatched into by the flush.
+   */
+  const updatesFromBaselines = (): Partial<Movie> => {
+    const scopesWithWatchedChanges = new Set<ScopeKey>(
+      staged.changes
+        .filter((change) => change.field === 'watched' || change.field === 'watchedAt')
+        .map((change) => change.scope),
+    );
 
-      // Rating edits are staged (see `staged`/`onRatingInput` above) rather
-      // than tracked in local state, so there is nothing rating-related left
-      // to do here. Flushing the staged draft is the next task's job.
+    const updates: Partial<Movie> = {};
+    let seasonsWatched: Movie['seasonsWatched'] | undefined;
 
-      // Update watched status if it changed. `shownWatched`/`shownWatchedAt`
-      // already resolve to the staged value when one is staged, else the
-      // baseline, so this is unchanged in effect from before staging existed.
-      const currentWatchedAt = shownWatchedAt;
-      const baselineWatched = baselines[visibleScope]?.watched ?? false;
-      const baselineWatchedAt = baselines[visibleScope]?.watchedAt ?? '';
+    for (const scope of scopesWithWatchedChanges) {
+      const watched = staged.isStaged(scope, 'watched')
+        ? (staged.fieldValue(scope, 'watched') as boolean)
+        : baselines[scope]?.watched ?? false;
+      const watchedAt = staged.isStaged(scope, 'watchedAt')
+        ? (staged.fieldValue(scope, 'watchedAt') as string)
+        : baselines[scope]?.watchedAt ?? '';
 
-      if (shownWatched !== baselineWatched || currentWatchedAt !== baselineWatchedAt) {
-        const groupId = currentGroupId;
-        if (!groupId) {
-          toast({
-            title: "No group selected",
-            description: "Please select a group to update watched status.",
-            variant: "destructive",
-          });
-          setSaving(false);
-          return;
-        }
-        // For TV series, send the selected season; for movies, don't send season
-        const season = isTVSeries && selectedSeason ? parseInt(selectedSeason, 10) : undefined;
-        await updateMovieWatchedStatus(groupId, movie.imdbId, shownWatched, currentWatchedAt || '', season);
-
-        // Refresh movies to get the latest data from backend
-        if (onRefreshMovies) {
-          await onRefreshMovies();
-        }
-      }
-
-      // Save movie updates locally
-      const finalWatchedAt = shownWatchedAt;
-
-      const updates: Partial<Movie> = {};
-      if (isTVSeries && selectedSeason) {
-        updates.seasonsWatched = {
-          ...(movie.seasonsWatched || {}),
-          [selectedSeason]: {
-            watched: shownWatched,
-            watchedAt: finalWatchedAt || undefined,
-          },
+      if (isSeasonScope(scope)) {
+        seasonsWatched = {
+          ...(seasonsWatched ?? movie.seasonsWatched ?? {}),
+          [seasonOf(scope)]: { watched, watchedAt: watchedAt || undefined },
         };
       } else {
-        updates.watched = shownWatched;
-        updates.watchedAt = finalWatchedAt || '';
+        updates.watched = watched;
+        updates.watchedAt = watchedAt || '';
       }
-      
-      onUpdate(movie.id, updates);
-      
+    }
+
+    if (seasonsWatched) {
+      updates.seasonsWatched = seasonsWatched;
+    }
+
+    return updates;
+  };
+
+  const handleSave = async () => {
+    if (!currentGroupId) {
       toast({
-        title: "Movie updated!",
-        description: "Your movie information, ratings, and comments have been saved.",
-      });
-      onClose();
-    } catch (error) {
-      console.error('Error saving:', error);
-      // saveRating/updateRating already unwrap the backend's `errorMessage` and
-      // rethrow it as the Error message — this used to throw that away and show
-      // a generic line instead, so a rejected note (ErrNoteTooPrecise,
-      // ErrInvalidNoteValue, a season conflict) looked like an unexplained
-      // failure. Say what the backend said, and keep the generic line as the
-      // fallback for something that is not an Error.
-      toast({
-        title: "Error saving",
-        description:
-          error instanceof Error && error.message
-            ? error.message
-            : "Failed to save changes. Please try again.",
+        title: "No group selected",
+        description: "Please select a group to save changes.",
         variant: "destructive",
       });
-    } finally {
-      setSaving(false);
+      return;
     }
+
+    const { ok } = await staged.flush();
+    // One refresh each, after the whole batch — never per staged item. The
+    // flush already ran every call through `Promise.allSettled`; refetching
+    // per item here would turn one save into N races against the same data.
+    await onRefreshRatings?.();
+    await onRefreshMovies?.();
+    if (!ok) return; // stay open — StagedChangesSummary already renders the failure block
+
+    onUpdate(movie.id, updatesFromBaselines());
+    toast({
+      title: "Saved",
+      description: "Your changes have been saved.",
+    });
+    staged.reset(); // before onClose, or the discard guard fires on the modal's own success
+    onClose();
   };
 
   const handleDeleteClick = () => {
@@ -310,8 +304,21 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     staged.stage(visibleScope, 'watchedAt', '', baselines[visibleScope]?.watchedAt ?? '');
   };
 
+  // The single funnel for every way this dialog can be asked to close: the X,
+  // Escape and an overlay click all arrive as `onOpenChange(false)`, and the
+  // footer Cancel button calls this directly. Routing all of them through one
+  // function is what makes the discard guard cover all of them without
+  // needing `onEscapeKeyDown`/`onPointerDownOutside` handlers of their own.
+  const attemptClose = () => (staged.isDirty ? setShowDiscardModal(true) : onClose());
+
+  const discardAndClose = () => {
+    setShowDiscardModal(false);
+    staged.reset();
+    onClose();
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) attemptClose(); }}>
       {/*
         The base dialog is `w-full ... sm:rounded-lg`, so below 640px it went
         edge to edge with square corners — the poster grid showed above and
@@ -459,13 +466,17 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                 <Switch
                   id="watched"
                   checked={shownWatched}
+                  disabled={staged.saving}
                   onCheckedChange={(next) =>
                     staged.stage(visibleScope, 'watched', next, baselines[visibleScope]?.watched ?? false)
                   }
                 />
                 <Label htmlFor="watched">Watched</Label>
                 {staged.isStaged(visibleScope, 'watched') && (
-                  <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                  <>
+                    <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                    <span className="sr-only">(unsaved)</span>
+                  </>
                 )}
               </div>
 
@@ -482,13 +493,17 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     <Label className="text-sm text-muted-foreground flex items-center gap-1">
                       Watched on:
                       {staged.isStaged(visibleScope, 'watchedAt') && (
-                        <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                        <>
+                          <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                          <span className="sr-only">(unsaved)</span>
+                        </>
                       )}
                     </Label>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={handleDeleteWatchedDate}
+                      disabled={staged.saving}
                       className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                     >
                       <XCircle className="h-3 w-3" />
@@ -498,6 +513,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                   <Input
                     type="date"
                     value={shownWatchedAt}
+                    disabled={staged.saving}
                     onChange={(e) =>
                       staged.stage(
                         visibleScope,
@@ -557,6 +573,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 max="10"
                                 step="0.1"
                                 value={displayedRating ?? ''}
+                                disabled={staged.saving}
                                 onChange={(e) => {
                                   const inputValue = e.target.value;
                                   if (inputValue === '' || inputValue === '.') {
@@ -587,7 +604,10 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                               </div>
                             )}
                             {isRatingStaged && (
-                              <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                              <>
+                                <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                                <span className="sr-only">(unsaved)</span>
+                              </>
                             )}
                             <StarRating
                               rating={displayedRating ?? 0}
@@ -605,6 +625,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => staged.unstage(visibleScope, 'rating')}
+                                  disabled={staged.saving}
                                   className="h-6 w-6 p-0"
                                 >
                                   <X className="h-3 w-3" />
@@ -614,6 +635,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => staged.stageRatingDelete(visibleScope, ratingBaseline !== null)}
+                                  disabled={staged.saving}
                                   className="h-6 w-6 p-0"
                                 >
                                   <Trash2 className="h-3 w-3" />
@@ -642,22 +664,54 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               </div>
 
               {/* Actions - Fixed at bottom on desktop, normal flow on mobile */}
-              <div className="flex gap-2 pt-4 pb-4 px-3 md:px-3 md:mt-auto md:shrink-0 shrink-0 border-t border-border">
-                <Button 
-                  onClick={handleSave} 
-                  disabled={saving}
-                  className="flex-1 bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light"
-                >
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </Button>
-                <Button 
-                  variant="destructive" 
-                  size="icon"
-                  onClick={handleDeleteClick}
-                  className="shrink-0"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+              <div className="shrink-0 md:mt-auto px-3 space-y-3">
+                {/*
+                  No wrapper div around the summary: when it renders null
+                  (nothing off-screen, nothing failed), `space-y-3` sees no
+                  preceding sibling at all and adds no gap above the button
+                  row — a wrapper div would still count as one and leave a
+                  dangling gap even with nothing inside it.
+                */}
+                <StagedChangesSummary
+                  changes={staged.changes}
+                  visibleScope={visibleScope}
+                  saving={staged.saving}
+                  onRetry={handleSave}
+                />
+                <div className="flex gap-2 pb-4 border-t border-border pt-4">
+                  {/*
+                    `variant="outline"` inherits a gold `hover:bg-accent` from
+                    this theme's `--accent` — the same leak the blue Save
+                    button next to it exists to avoid — so both states are
+                    overridden explicitly rather than left default.
+                  */}
+                  <Button
+                    variant="outline"
+                    onClick={attemptClose}
+                    className="flex-1 min-w-0 border-border bg-movie-surface hover:bg-movie-surface-hover hover:text-foreground"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={!staged.isDirty || staged.saving}
+                    className="flex-1 min-w-0 truncate bg-movie-blue hover:bg-movie-blue-light"
+                  >
+                    {staged.saving
+                      ? 'Saving…'
+                      : staged.isDirty
+                        ? `Save ${staged.changeCount} change${staged.changeCount === 1 ? '' : 's'}`
+                        : 'Save'}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    onClick={handleDeleteClick}
+                    className="shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </div>
             </div>
@@ -672,6 +726,31 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         onConfirm={handleDeleteConfirm}
         loading={deleting}
       />
+
+      <AlertDialog open={showDiscardModal} onOpenChange={(open) => { if (!open) setShowDiscardModal(false); }}>
+        <AlertDialogContent className="bg-movie-surface border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              You have {staged.changeCount} unsaved change{staged.changeCount === 1 ? '' : 's'}. They will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setShowDiscardModal(false)}
+              className="bg-movie-surface border-border hover:bg-movie-surface/80"
+            >
+              Keep editing
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={discardAndClose}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };

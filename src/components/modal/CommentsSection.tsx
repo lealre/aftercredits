@@ -228,6 +228,7 @@ export const CommentsSection = ({
         <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
           <MessageCircle className="w-4 h-4" />
           Comments ({comments.length})
+          <span className="text-xs text-muted-foreground font-normal">Posted immediately</span>
         </h3>
         <div className="space-y-3 overflow-x-hidden max-h-[300px] overflow-y-auto scrollbar-subtle">
           {loadingComments ? (
