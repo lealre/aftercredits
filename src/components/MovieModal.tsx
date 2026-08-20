@@ -29,7 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Star, Trash2, ExternalLink, X, XCircle, Edit3, Check } from 'lucide-react';
+import { Star, Trash2, ExternalLink, X, Edit3, Check, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
@@ -617,17 +617,28 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                       <Button
                         variant="ghost"
                         size="sm"
-                        aria-label="Clear the watched date"
                         onClick={handleDeleteWatchedDate}
                         disabled={staged.saving || submitting}
-                        className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:bg-movie-surface-hover hover:text-destructive"
+                        className="h-7 px-2 shrink-0 text-xs text-muted-foreground hover:bg-movie-surface-hover hover:text-destructive"
                       >
-                        <XCircle className="h-3 w-3" />
+                        Clear
                       </Button>
                     )}
                   </div>
 
-                  <Input
+                  {/*
+                    * The icon sits beside the field, not layered over it. An
+                    * empty `input[type=date]` renders as a literal void on iOS —
+                    * no text, and none of the `-webkit-calendar-picker-indicator`
+                    * styling below applies there — so an unset date looked like a
+                    * dead box, and clearing one looked like nothing had happened.
+                    * An overlay inside the field would have collided with the
+                    * `dd/mm/yyyy` and the picker button that desktop browsers DO
+                    * draw; sitting outside, this reads the same everywhere.
+                    */}
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <Input
                     type="date"
                     value={shownWatchedAt}
                     disabled={staged.saving || submitting}
@@ -639,8 +650,9 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         baselines[visibleScope]?.watchedAt ?? '',
                       )
                     }
-                    className="text-base md:text-sm w-full max-w-full h-10 appearance-none bg-movie-surface border-border text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-datetime-edit]:leading-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-                  />
+                    className="text-base md:text-sm flex-1 min-w-0 h-10 appearance-none bg-movie-surface border-border text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-datetime-edit]:leading-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    />
+                  </div>
                 </div>
               )}
             </div>
