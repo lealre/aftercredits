@@ -29,7 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Star, Trash2, ExternalLink, X, XCircle, Edit3 } from 'lucide-react';
+import { Star, Trash2, ExternalLink, X, XCircle, Edit3, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
@@ -623,6 +623,19 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
               <h3 className="text-sm font-semibold text-movie-blue flex items-center gap-2">
                 <Star className="w-4 h-4" />
                 Ratings
+                {/*
+                  * The pending marker sits on the section heading rather than
+                  * on the row: beside a number it just read as a stray glyph,
+                  * whereas here it labels the section that has something
+                  * unsaved in it. Scoped to the visible season, so switching
+                  * seasons does not show a mark for another season's edit.
+                  */}
+                {staged.isStaged(visibleScope, 'rating') && (
+                  <>
+                    <span className="text-movie-blue text-xs" aria-hidden="true">•</span>
+                    <span className="sr-only">(unsaved changes)</span>
+                  </>
+                )}
               </h3>
               <div className="space-y-3">
                 {users.map((user, index) => {
@@ -667,29 +680,43 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 disabled={staged.saving || submitting}
                                 onChange={(e) => {
                                   const inputValue = e.target.value;
-                                  // What the box shows is what was typed —
-                                  // including an empty box.
-                                  setRatingDraftText(inputValue);
+
                                   // An empty box means "nothing staged yet",
                                   // NOT "rate this 0.0" — staging a zero here
                                   // would send a real rating nobody asked for.
                                   // The box still shows empty because the raw
-                                  // text above owns what is displayed; without
-                                  // that, unstaging would refill the field from
-                                  // the server value and you could never clear
-                                  // it to type a different one.
+                                  // text owns what is displayed; without that,
+                                  // unstaging would refill the field from the
+                                  // server value and you could never clear it
+                                  // to type a different one.
                                   if (inputValue === '' || inputValue === '.') {
+                                    setRatingDraftText(inputValue);
                                     staged.unstage(visibleScope, 'rating');
                                     return;
                                   }
+
                                   const value = parseFloat(inputValue);
                                   // NaN only for a part-typed value like "-";
-                                  // ignoring it leaves what was there rather
-                                  // than wiping it. Everything else is clamped
-                                  // and rounded by onRatingInput.
-                                  if (!isNaN(value)) {
-                                    onRatingInput(value);
+                                  // showing it while staging nothing leaves the
+                                  // draft alone until there is a real number.
+                                  if (isNaN(value)) {
+                                    setRatingDraftText(inputValue);
+                                    return;
                                   }
+
+                                  // `normalizeNote` clamps to 0-10 and rounds to
+                                  // one decimal. Reflecting it back into the box
+                                  // whenever it actually changed the value is
+                                  // what stops the field disagreeing with what
+                                  // will be sent: typing "456" used to display
+                                  // 456 while staging 10, and "8.55" displayed
+                                  // four characters of a value that had already
+                                  // become 8.6. Equal values are left exactly as
+                                  // typed, so a trailing "." survives long
+                                  // enough to type "8.5".
+                                  const note = normalizeNote(value);
+                                  setRatingDraftText(note === value ? inputValue : String(note));
+                                  onRatingInput(value);
                                 }}
                                 /*
                                  * `ring-inset` + `ring-offset-0` rather than the
@@ -741,38 +768,54 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                           </div>
                           {canEditRating && (
                             <div className="flex items-center gap-1">
-                              {isRatingStaged ? (
-                                // Reverts either a typed-but-unsaved value or a
-                                // staged deletion back to the server baseline —
-                                // for the latter this doubles as "undo". It also
-                                // collapses the editor, so one button undoes the
-                                // whole gesture rather than leaving an input open
-                                // over a value that is no longer pending.
+                              {editingRating ? (
+                                <>
+                                  {/*
+                                    * "Done" closes the editor and KEEPS what was
+                                    * typed. It is not a save — the value is in
+                                    * the draft either way and only the footer's
+                                    * Save writes anything — it just collapses
+                                    * the field back to text, which is why the
+                                    * heading keeps its dot afterwards.
+                                    */}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label="Done editing your rating"
+                                    onClick={() => {
+                                      setEditingRating(false);
+                                      setRatingDraftText(null);
+                                    }}
+                                    disabled={staged.saving || submitting}
+                                    className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
+                                  >
+                                    <Check className="h-3 w-3" />
+                                  </Button>
+                                  {/* Throws the pending change away and closes. */}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label="Discard this rating change"
+                                    onClick={() => {
+                                      staged.unstage(visibleScope, 'rating');
+                                      setEditingRating(false);
+                                      setRatingDraftText(null);
+                                    }}
+                                    disabled={staged.saving || submitting}
+                                    className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              ) : isRatingStaged ? (
+                                // Collapsed with something pending — a typed
+                                // value or a staged deletion. One button undoes
+                                // either, which is what "undo" means for both.
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  aria-label="Discard this rating change"
-                                  onClick={() => {
-                                    staged.unstage(visibleScope, 'rating');
-                                    setEditingRating(false);
-                                    setRatingDraftText(null);
-                                  }}
-                                  disabled={staged.saving || submitting}
-                                  className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
-                                >
-                                  <X className="h-3 w-3" />
-                                </Button>
-                              ) : editingRating ? (
-                                // Nothing staged and the editor is open: this is
-                                // just "close it again", not a discard.
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  aria-label="Close the rating editor"
-                                  onClick={() => {
-                                    setEditingRating(false);
-                                    setRatingDraftText(null);
-                                  }}
+                                  aria-label="Undo this rating change"
+                                  onClick={() => staged.unstage(visibleScope, 'rating')}
                                   disabled={staged.saving || submitting}
                                   className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
                                 >
@@ -795,7 +838,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   <Edit3 className="h-3 w-3" />
                                 </Button>
                               )}
-                              {!isRatingStaged && ratingBaseline !== null ? (
+                              {!editingRating && !isRatingStaged && ratingBaseline !== null ? (
                                 // The branch condition is the whole existence
                                 // check, so `hasExistingRating` is a constant
                                 // `true` here rather than a second test of it.
