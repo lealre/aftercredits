@@ -43,6 +43,7 @@ import { useStagedTitleEdits } from '@/hooks/useStagedTitleEdits';
 import { TITLE_SCOPE, seasonScope, isSeasonScope, seasonOf, type ScopeKey } from '@/lib/stagedEdits';
 import type { ScopeBaseline } from '@/lib/flushPlan';
 import { normalizeNote } from '@/lib/rating';
+import { toDateInputValue } from '@/lib/dates';
 
 interface MovieModalProps {
   movie: Movie;
@@ -134,14 +135,22 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
    * refetched after every save, which is what keeps this current.
    */
   const baselines = useMemo<Record<ScopeKey, ScopeBaseline>>(() => {
+    // `watchedAt` is normalized to `yyyy-MM-dd` HERE rather than at the input,
+    // because the baseline is what the draft compares against. Feeding the
+    // input a truncated date while comparing against a full timestamp would
+    // make re-picking the same day look like a change, and stage a write that
+    // changes nothing.
     const map: Record<ScopeKey, ScopeBaseline> = {
-      [TITLE_SCOPE]: { watched: movie.watched ?? false, watchedAt: movie.watchedAt ?? '' },
+      [TITLE_SCOPE]: {
+        watched: movie.watched ?? false,
+        watchedAt: toDateInputValue(movie.watchedAt),
+      },
     };
     for (const season of Object.keys(movie.seasonsWatched ?? {})) {
       const seasonWatched = movie.seasonsWatched?.[season];
       map[seasonScope(season)] = {
         watched: seasonWatched?.watched ?? false,
-        watchedAt: seasonWatched?.watchedAt ?? '',
+        watchedAt: toDateInputValue(seasonWatched?.watchedAt),
       };
     }
     return map;
@@ -417,7 +426,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
         card floating over the grid. max-h leaves less showing through, and
         overflow-hidden keeps the scrolling body inside the rounded corners.
       */}
-      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[92vh] sm:max-h-[90vh] flex flex-col bg-movie-surface border-border p-0 rounded-lg overflow-hidden">
+      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[92dvh] sm:max-h-[90dvh] flex flex-col bg-movie-surface border-border p-0 rounded-lg overflow-hidden">
         <DialogHeader className="px-4 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4 shrink-0">
           <DialogTitle className="text-movie-blue">{movie.title}</DialogTitle>
         </DialogHeader>
