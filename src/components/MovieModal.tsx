@@ -333,7 +333,20 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) attemptClose(); }}>
+    <Dialog
+      open={isOpen}
+      // The single funnel for the X, Escape, and an overlay click. All three
+      // (plus the footer Cancel button, which calls `attemptClose` directly)
+      // route through here — gating only the Cancel button's `disabled` prop
+      // would leave the other three doors open. A save already has writes on
+      // the wire, some possibly already committed server-side, so there is
+      // nothing left to honestly discard; refusing to dismiss for the
+      // duration is what keeps the discard dialog's "will be lost" copy true
+      // rather than becoming a lie the moment the flush settles afterwards.
+      onOpenChange={(open) => {
+        if (!open && !(staged.saving || submitting)) attemptClose();
+      }}
+    >
       {/*
         The base dialog is `w-full ... sm:rounded-lg`, so below 640px it went
         edge to edge with square corners — the poster grid showed above and
