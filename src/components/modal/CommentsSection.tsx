@@ -268,7 +268,7 @@ export const CommentsSection = ({
                   </div>
                   {isEditing ? (
                     <div className="space-y-2">
-                      <Textarea value={editingCommentText} onChange={(e) => setEditingCommentText(e.target.value)} placeholder="Write your comment..." className="bg-background border-border resize-none min-h-[70px] text-sm" rows={3} />
+                      <Textarea value={editingCommentText} onChange={(e) => setEditingCommentText(e.target.value)} placeholder="Write your comment..." className="bg-background border-border resize-none min-h-[70px] text-sm focus-visible:ring-inset focus-visible:ring-offset-0" rows={3} />
                       <div className="flex gap-2 justify-end">
                         <Button variant="outline" size="sm" onClick={handleCancelEditComment} disabled={savingComment} className="h-8 text-xs">Cancel</Button>
                         <Button size="sm" onClick={() => handleSaveEditComment(comment.id)} disabled={savingComment || !editingCommentText.trim()} className="h-8 text-xs bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light">{savingComment ? 'Saving...' : 'Save'}</Button>
@@ -292,7 +292,7 @@ export const CommentsSection = ({
 
         {showAddCommentForm && (
           <div className="space-y-2 pt-2 border-t border-border">
-            <Textarea value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} placeholder="Write your comment..." className="bg-background border-border resize-none min-h-[70px] text-sm" rows={3} />
+            <Textarea value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} placeholder="Write your comment..." className="bg-background border-border resize-none min-h-[70px] text-sm focus-visible:ring-inset focus-visible:ring-offset-0" rows={3} />
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => { setShowAddCommentForm(false); setNewCommentText(''); }} disabled={addingComment} className="flex-1 h-8 text-xs">Cancel</Button>
               <Button onClick={handleAddComment} disabled={addingComment || !newCommentText.trim()} className="flex-1 h-8 text-xs bg-movie-blue text-movie-blue-foreground hover:bg-movie-blue-light">{addingComment ? 'Adding...' : 'Add Comment'}</Button>

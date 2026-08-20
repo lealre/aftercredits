@@ -29,7 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Star, Trash2, ExternalLink, X, XCircle } from 'lucide-react';
+import { Star, Trash2, ExternalLink, X, XCircle, Edit3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
@@ -82,6 +82,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   // mid-refresh and start a second, concurrent flush against the same failed
   // items. This wraps the ENTIRE `handleSave` body instead.
   const [submitting, setSubmitting] = useState(false);
+
+  // Whether the rating input is revealed. Purely presentational: a permanently
+  // open number field reads as clutter in a column that is otherwise text, so
+  // the pencil gates it. It does NOT gate committing — typing stages straight
+  // into the draft either way, and Save is still the only thing that writes.
+  const [editingRating, setEditingRating] = useState(false);
 
   // Reset which season is shown each time the modal opens. `movie.id` is
   // stable for the lifetime of a MovieCard's modal instance (one card, one
@@ -141,12 +147,22 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   useEffect(() => {
     if (!isOpen) {
       staged.reset();
+      setEditingRating(false);
     }
     // `staged.reset` is a stable useCallback (empty deps); depending on the
     // whole `staged` object would rerun this every render, since the hook
     // returns a new object each time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, staged.reset]);
+
+  // Collapse the rating editor when the visible scope changes, so switching
+  // season does not leave an input open over a different season's value. Safe
+  // to key an effect on the scope here precisely because this touches only the
+  // presentational flag — the draft is untouched, which is what the deleted
+  // season-reset effect got wrong.
+  useEffect(() => {
+    setEditingRating(false);
+  }, [visibleScope]);
 
   const shownWatched = staged.isStaged(visibleScope, 'watched')
     ? (staged.fieldValue(visibleScope, 'watched') as boolean)
@@ -580,7 +596,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         baselines[visibleScope]?.watchedAt ?? '',
                       )
                     }
-                    className="text-sm bg-movie-surface border-border text-foreground [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    className="text-sm bg-movie-surface border-border text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   />
                 </div>
               )}
@@ -624,12 +640,13 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         <Label className="text-sm font-medium text-foreground">{user.name && user.name.trim() !== "" ? user.name : user.username}</Label>
                         <div className="flex items-center justify-between w-full">
                           <div className="flex items-center gap-3">
-                            {canEditRating && !isRatingStagedDeletion ? (
+                            {canEditRating && editingRating && !isRatingStagedDeletion ? (
                               <Input
                                 type="number"
                                 min="0"
                                 max="10"
                                 step="0.1"
+                                autoFocus
                                 value={displayedRating ?? ''}
                                 disabled={staged.saving || submitting}
                                 onChange={(e) => {
@@ -656,7 +673,17 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                     onRatingInput(value);
                                   }
                                 }}
-                                className="w-20 bg-movie-surface border-border text-sm"
+                                /*
+                                 * `ring-inset` + `ring-offset-0` rather than the
+                                 * base input's `ring-2 ring-offset-2`: that draws
+                                 * 4px OUTSIDE the box, and this field sits flush
+                                 * against the left edge of a scroll container
+                                 * (`overflow-y-auto`), which clipped the focus
+                                 * ring's outer edge clean off. Drawing it inside
+                                 * the border box cannot be clipped by an
+                                 * ancestor at any width.
+                                 */
+                                className="w-20 bg-movie-surface border-border text-sm focus-visible:ring-inset focus-visible:ring-offset-0"
                                 placeholder="0.0"
                               />
                             ) : (
@@ -687,23 +714,56 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                               {isRatingStaged ? (
                                 // Reverts either a typed-but-unsaved value or a
                                 // staged deletion back to the server baseline —
-                                // for the latter this doubles as "undo".
+                                // for the latter this doubles as "undo". It also
+                                // collapses the editor, so one button undoes the
+                                // whole gesture rather than leaving an input open
+                                // over a value that is no longer pending.
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => staged.unstage(visibleScope, 'rating')}
+                                  aria-label="Discard this rating change"
+                                  onClick={() => {
+                                    staged.unstage(visibleScope, 'rating');
+                                    setEditingRating(false);
+                                  }}
                                   disabled={staged.saving || submitting}
                                   className="h-6 w-6 p-0"
                                 >
                                   <X className="h-3 w-3" />
                                 </Button>
-                              ) : ratingBaseline !== null ? (
+                              ) : editingRating ? (
+                                // Nothing staged and the editor is open: this is
+                                // just "close it again", not a discard.
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label="Close the rating editor"
+                                  onClick={() => setEditingRating(false)}
+                                  disabled={staged.saving || submitting}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label="Edit your rating"
+                                  onClick={() => setEditingRating(true)}
+                                  disabled={staged.saving || submitting}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <Edit3 className="h-3 w-3" />
+                                </Button>
+                              )}
+                              {!isRatingStaged && ratingBaseline !== null ? (
                                 // The branch condition is the whole existence
                                 // check, so `hasExistingRating` is a constant
                                 // `true` here rather than a second test of it.
                                 <Button
                                   variant="ghost"
                                   size="sm"
+                                  aria-label="Remove your rating"
                                   onClick={() => staged.stageRatingDelete(visibleScope, true)}
                                   disabled={staged.saving || submitting}
                                   className="h-6 w-6 p-0"
