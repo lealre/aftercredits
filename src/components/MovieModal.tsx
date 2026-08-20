@@ -89,6 +89,20 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   // into the draft either way, and Save is still the only thing that writes.
   const [editingRating, setEditingRating] = useState(false);
 
+  /**
+   * What the rating input literally shows while it is open, as typed.
+   *
+   * The field cannot be driven off the staged/baseline number alone. Emptying
+   * it has to mean "no rating staged yet" — otherwise clearing would send a
+   * real 0.0 — but the moment nothing is staged, a derived value falls back to
+   * the server's number and refills the box, so the field could never be
+   * emptied to type a different one. Holding the raw text separately lets it
+   * sit empty while the draft holds nothing, which is the honest pairing.
+   *
+   * `null` means "not editing"; the displayed number is derived as usual.
+   */
+  const [ratingDraftText, setRatingDraftText] = useState<string | null>(null);
+
   // Reset which season is shown each time the modal opens. `movie.id` is
   // stable for the lifetime of a MovieCard's modal instance (one card, one
   // title), so this only needs to react to the open transition — not to
@@ -148,6 +162,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
     if (!isOpen) {
       staged.reset();
       setEditingRating(false);
+      setRatingDraftText(null);
     }
     // `staged.reset` is a stable useCallback (empty deps); depending on the
     // whole `staged` object would rerun this every render, since the hook
@@ -162,6 +177,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   // season-reset effect got wrong.
   useEffect(() => {
     setEditingRating(false);
+    setRatingDraftText(null);
   }, [visibleScope]);
 
   const shownWatched = staged.isStaged(visibleScope, 'watched')
@@ -647,19 +663,21 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                 max="10"
                                 step="0.1"
                                 autoFocus
-                                value={displayedRating ?? ''}
+                                value={ratingDraftText ?? (displayedRating === null ? '' : String(displayedRating))}
                                 disabled={staged.saving || submitting}
                                 onChange={(e) => {
                                   const inputValue = e.target.value;
-                                  // Clearing the field is not "rate this 0.0".
-                                  // The input is permanently visible now (it
-                                  // used to appear only while explicitly
-                                  // editing, with a discard button beside it),
-                                  // so staging 0 here would let select-all-
-                                  // delete arm the discard guard and send a
-                                  // real zero. Dropping the staged value
-                                  // returns the field to the server baseline;
-                                  // a genuine zero is still typeable as "0".
+                                  // What the box shows is what was typed —
+                                  // including an empty box.
+                                  setRatingDraftText(inputValue);
+                                  // An empty box means "nothing staged yet",
+                                  // NOT "rate this 0.0" — staging a zero here
+                                  // would send a real rating nobody asked for.
+                                  // The box still shows empty because the raw
+                                  // text above owns what is displayed; without
+                                  // that, unstaging would refill the field from
+                                  // the server value and you could never clear
+                                  // it to type a different one.
                                   if (inputValue === '' || inputValue === '.') {
                                     staged.unstage(visibleScope, 'rating');
                                     return;
@@ -737,9 +755,10 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   onClick={() => {
                                     staged.unstage(visibleScope, 'rating');
                                     setEditingRating(false);
+                                    setRatingDraftText(null);
                                   }}
                                   disabled={staged.saving || submitting}
-                                  className="h-6 w-6 p-0"
+                                  className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
                                 >
                                   <X className="h-3 w-3" />
                                 </Button>
@@ -750,9 +769,12 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   variant="ghost"
                                   size="sm"
                                   aria-label="Close the rating editor"
-                                  onClick={() => setEditingRating(false)}
+                                  onClick={() => {
+                                    setEditingRating(false);
+                                    setRatingDraftText(null);
+                                  }}
                                   disabled={staged.saving || submitting}
-                                  className="h-6 w-6 p-0"
+                                  className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
                                 >
                                   <X className="h-3 w-3" />
                                 </Button>
@@ -761,9 +783,14 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   variant="ghost"
                                   size="sm"
                                   aria-label="Edit your rating"
-                                  onClick={() => setEditingRating(true)}
+                                  onClick={() => {
+                                    setRatingDraftText(
+                                      displayedRating === null ? '' : String(displayedRating),
+                                    );
+                                    setEditingRating(true);
+                                  }}
                                   disabled={staged.saving || submitting}
-                                  className="h-6 w-6 p-0"
+                                  className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
                                 >
                                   <Edit3 className="h-3 w-3" />
                                 </Button>
@@ -778,7 +805,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                   aria-label="Remove your rating"
                                   onClick={() => staged.stageRatingDelete(visibleScope, true)}
                                   disabled={staged.saving || submitting}
-                                  className="h-6 w-6 p-0"
+                                  className="h-6 w-6 p-0 hover:bg-movie-surface-hover hover:text-foreground"
                                 >
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
