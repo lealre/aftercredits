@@ -195,11 +195,22 @@ export const FilterControls = ({
                 chips beside it. collisionPadding keeps a margin when it does
                 shift; it renders in a portal, so no ancestor can clip it.
               */}
+              {/*
+                * Pinned below the trigger. Radix's default collision handling
+                * flips a panel to the opposite side when it does not fit, so on
+                * a short viewport this opened UPWARD over the toolbar — which
+                * reads as the panel appearing in the wrong place rather than as
+                * a considered fallback. `avoidCollisions={false}` keeps it down;
+                * the height cap is what makes that safe, since the panel then
+                * scrolls internally instead of running off the bottom.
+                */}
               <PopoverContent
+                side="bottom"
                 align="start"
                 sideOffset={8}
                 collisionPadding={12}
-                className="w-[calc(100vw-1.5rem)] sm:w-80 p-4"
+                avoidCollisions={false}
+                className="w-[calc(100vw-1.5rem)] sm:w-80 p-4 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto scrollbar-subtle"
               >
                 <div className="space-y-4">
                   <div>

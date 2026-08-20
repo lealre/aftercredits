@@ -639,7 +639,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                         baselines[visibleScope]?.watchedAt ?? '',
                       )
                     }
-                    className="text-sm w-full max-w-full h-10 appearance-none bg-movie-surface border-border text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-datetime-edit]:leading-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    className="text-base md:text-sm w-full max-w-full h-10 appearance-none bg-movie-surface border-border text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-datetime-edit]:leading-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   />
                 </div>
               )}
@@ -755,7 +755,7 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                                  * the border box cannot be clipped by an
                                  * ancestor at any width.
                                  */
-                                className="w-20 bg-movie-surface border-border text-sm focus-visible:ring-inset focus-visible:ring-offset-0"
+                                className="w-20 bg-movie-surface border-border text-base md:text-sm focus-visible:ring-inset focus-visible:ring-offset-0"
                                 placeholder="0.0"
                               />
                             ) : (
