@@ -1,0 +1,92 @@
+name: ci
+
+# Runs on pull requests, and on main after a merge. The push trigger is not
+# redundant: a PR is tested against a merge of itself into main, so two PRs
+# that are each green can still break main together. Testing main directly is
+# what catches that.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly what
+      # package-lock.json pins and fails if the two disagree, so CI cannot
+      # quietly test a different dependency tree than the Dockerfile builds.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  style:
+    name: Style
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `tsc -b`, NOT `tsc --noEmit`.
+      #
+      # This repo uses project references with `"files": []` in the root
+      # tsconfig, so `tsc --noEmit` type-checks exactly zero files and exits 0.
+      # It looks like a passing type check and verifies nothing. `-b` builds the
+      # referenced projects and is the only form that actually checks this
+      # codebase.
+      - name: Typecheck
+        run: npx tsc -b
+
+      # --max-warnings 0 because the repo is currently at zero: no errors and no
+      # warnings. Enforcing that is what keeps it there — a gate that tolerates
+      # warnings accumulates them until nobody reads the output.
+      - name: Lint
+        run: npx eslint . --max-warnings 0
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A separate job from the typecheck because Vite's build does not
+      # type-check: esbuild strips types without verifying them. A green build
+      # says the bundle can be produced, which is a different claim from the
+      # code being type-correct, and the deployment needs both.
+      - name: Build
+        run: npm run build
