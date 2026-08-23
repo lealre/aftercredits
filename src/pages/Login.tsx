@@ -30,11 +30,18 @@ const Login = () => {
   }, [navigate]);
 
   useEffect(() => {
-    const errorMessage = searchParams.get("error");
-    if (errorMessage) {
+    // Map a known reason code to a fixed, app-authored message. Anything not in
+    // this table is ignored, so a crafted /login?reason=... (or the old
+    // ?error=...) URL cannot put attacker text into this toast.
+    const reasonMessages: Record<string, string> = {
+      required: "Please log in to continue.",
+      expired: "Your session expired. Please log in again.",
+    };
+    const message = reasonMessages[searchParams.get("reason") ?? ""];
+    if (message) {
       toast({
         title: "Login required",
-        description: errorMessage,
+        description: message,
         variant: "destructive",
       });
     }
@@ -148,17 +155,6 @@ const Login = () => {
               </Button>
             </form>
 
-            <div className="mt-4 text-center">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => navigate("/signup")}
-                disabled={submitting}
-              >
-                Sign up
-              </Button>
-            </div>
           </div>
         </div>
       </main>

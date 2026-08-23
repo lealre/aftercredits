@@ -17,7 +17,6 @@ import {
   getToken,
   getTokenOrRedirect,
   handleUnauthorized,
-  getErrorMessage,
   getGroupId,
 } from "./authService";
 import {
@@ -133,17 +132,18 @@ const authFetch = async (url: string, options: RequestInit = {}) => {
 
   if (response.status === 401) {
     try {
-      const data = await response.json();
-      const message = getErrorMessage(data) || "Session expired";
+      // Body intentionally not surfaced to the user: the login page shows a
+      // fixed message keyed by reason code, never a server-supplied string.
+      await response.json().catch(() => undefined);
       // Only redirect if we haven't already redirected
       if (window.location.pathname !== '/login') {
-        handleUnauthorized(message);
+        handleUnauthorized();
       }
       throw new Error("Session expired");
     } catch (err) {
       // Only redirect if we haven't already redirected
       if (window.location.pathname !== '/login') {
-        handleUnauthorized("Session expired");
+        handleUnauthorized();
       }
       throw err instanceof Error ? err : new Error("Session expired");
     }

@@ -39,8 +39,15 @@ export interface ErrorResponse {
 type ErrorResponseType =
   | { statusCode?: number; errorMessage?: string };
 
-const redirectToLogin = (message?: string) => {
-  const params = message ? `?error=${encodeURIComponent(message)}` : "";
+// Reasons the app redirects to /login. Only these stable codes travel in the
+// URL; the login page maps them to fixed, app-authored strings. Nothing
+// user- or server-supplied is ever put in the URL and rendered, which is what
+// previously let a crafted /login?error=... URL show attacker-authored text in
+// a first-party toast on the real domain.
+export type LoginReason = "required" | "expired";
+
+const redirectToLogin = (reason?: LoginReason) => {
+  const params = reason ? `?reason=${reason}` : "";
   window.location.replace(`/login${params}`);
 };
 
@@ -144,15 +151,15 @@ export const clearGroupId = () => {
 export const getTokenOrRedirect = () => {
   const token = getToken();
   if (!token) {
-    redirectToLogin("Login required");
+    redirectToLogin("required");
     return null;
   }
   return token;
 };
 
-export const handleUnauthorized = (message?: string) => {
+export const handleUnauthorized = () => {
   clearToken();
-  redirectToLogin(message || "Session expired. Please log in again.");
+  redirectToLogin("expired");
 };
 
 /**
