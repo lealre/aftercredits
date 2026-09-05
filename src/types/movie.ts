@@ -108,8 +108,14 @@ export interface User {
   username: string;
 }
 
+/*
+ * The group-members endpoint returns full user objects, so this holds
+ * UserResponse rather than the narrower User. It said `User[]` while the
+ * response carried email, createdAt and updatedAt, which is what made
+ * `member.email` a type error in the one component that reads it.
+ */
 export interface UsersResponse {
-  users: User[];
+  users: UserResponse[];
 }
 
 export interface PaginatedResponse<T> {
@@ -147,7 +153,7 @@ export interface GroupResponse {
   description?: string;
   ownerId: string;
   users: string[];
-  titles: any[];
+  titles: Movie[];
   createdAt: string;
   updatedAt: string;
 }

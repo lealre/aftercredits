@@ -20,7 +20,9 @@ export interface LoginResponse {
   accessToken: string;
 }
 
-export interface LoginSuccess extends LoginResponse {}
+// An alias, not an extension: the success shape IS the login response.
+// Declared as an empty `extends` it read as "more fields to come".
+export type LoginSuccess = LoginResponse;
 
 export interface NewUserRequest {
   username?: string;
@@ -37,8 +39,15 @@ export interface ErrorResponse {
 type ErrorResponseType =
   | { statusCode?: number; errorMessage?: string };
 
-const redirectToLogin = (message?: string) => {
-  const params = message ? `?error=${encodeURIComponent(message)}` : "";
+// Reasons the app redirects to /login. Only these stable codes travel in the
+// URL; the login page maps them to fixed, app-authored strings. Nothing
+// user- or server-supplied is ever put in the URL and rendered, which is what
+// previously let a crafted /login?error=... URL show attacker-authored text in
+// a first-party toast on the real domain.
+export type LoginReason = "required" | "expired";
+
+const redirectToLogin = (reason?: LoginReason) => {
+  const params = reason ? `?reason=${reason}` : "";
   window.location.replace(`/login${params}`);
 };
 
@@ -63,10 +72,8 @@ export const login = async (payload: LoginRequest): Promise<LoginSuccess> => {
   if (!response.ok) {
     let message = "Login failed";
     try {
-      const errorBody: ErrorResponseType = await response.json();
-      message =
-        (errorBody as any)?.errorMessage ||
-        message;
+      const errorBody: unknown = await response.json();
+      message = getErrorMessage(errorBody) || message;
     } catch {
       // ignore parse errors and use default message
     }
@@ -144,25 +151,32 @@ export const clearGroupId = () => {
 export const getTokenOrRedirect = () => {
   const token = getToken();
   if (!token) {
-    redirectToLogin("Login required");
+    redirectToLogin("required");
     return null;
   }
   return token;
 };
 
-export const handleUnauthorized = (message?: string) => {
+export const handleUnauthorized = () => {
   clearToken();
-  redirectToLogin(message || "Session expired. Please log in again.");
+  redirectToLogin("expired");
 };
 
-export const getErrorMessage = (data: unknown) => {
+/**
+ * Pull a human-readable message out of an error body of unknown shape.
+ *
+ * Declared as returning `string` rather than inferring: every field read off
+ * an unknown object is itself `unknown`, so inference would hand callers a
+ * value they cannot assign to anything, and the previous `any` casts were
+ * hiding that rather than solving it. The guard plus one index signature is
+ * what makes the reads legitimate; `String()` is what makes the result usable
+ * regardless of what the server actually put there.
+ */
+export const getErrorMessage = (data: unknown): string => {
   if (!data || typeof data !== "object") return "";
-  return (
-    (data as any).errorMessage ||
-    (data as any).ErrorMessage ||
-    (data as any).error ||
-    ""
-  );
+  const body = data as Record<string, unknown>;
+  const message = body.errorMessage ?? body.ErrorMessage ?? body.error;
+  return typeof message === "string" ? message : message ? String(message) : "";
 };
 
 export const createUser = async (payload: NewUserRequest): Promise<void> => {
