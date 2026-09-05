@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/fav.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- A private household app: keep it out of search results entirely.
+         robots.txt only asks crawlers not to fetch; this is what stops a
+         URL discovered elsewhere from being indexed. -->
+    <meta name="robots" content="noindex, nofollow" />
     <title>AfterCredits - Personal Movie Rating App</title>
     <meta name="description" content="A personal movie rating app for couples to track and rate films together" />
     <meta name="author" content="Lovable" />
