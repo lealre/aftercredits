@@ -184,8 +184,24 @@ export const FilterControls = ({
                 align="start"
                 sideOffset={8}
                 collisionPadding={12}
-                avoidCollisions={false}
-                className="w-[calc(100vw-1.5rem)] sm:w-80 p-4 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto scrollbar-subtle"
+                /*
+                 * avoidCollisions stays ON. It was briefly set to false to stop
+                 * the panel flipping upward over the toolbar, and that worked —
+                 * but the flag governs BOTH axes, so it also switched off the
+                 * horizontal shifting that keeps the panel on screen. The panel
+                 * then ran off the right edge on a phone, cutting off Apply.
+                 *
+                 * Each problem gets the tool that addresses only it:
+                 *   vertical flip   -> the height cap below. A panel capped to
+                 *                      the space available beneath the trigger
+                 *                      always fits there, so it never flips.
+                 *   horizontal drift -> avoidCollisions, left on.
+                 *
+                 * `w-[min(...)]` rather than a bare viewport width: combined
+                 * with the shift, it cannot be positioned past the edge no
+                 * matter where the trigger sits in the row.
+                 */
+                className="w-[min(calc(100vw-1.5rem),20rem)] p-4 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto scrollbar-subtle"
               >
                 <div className="space-y-4">
                   <div>
