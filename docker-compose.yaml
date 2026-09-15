@@ -8,19 +8,21 @@
 #
 # db-setup applies the schema migrations and creates the superuser before the
 # backend starts; it exits when done.
+#
+# Secrets come from .env (required: true — a missing or empty .env now fails the
+# deploy loudly instead of silently defaulting through to published credentials).
+# Each service gets ONLY the variables it needs, so a foothold in one container
+# does not hand over every secret.
 
 services:
   postgres:
     image: postgres:16
     container_name: aftercredits-postgres
     restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-aftercredits}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-aftercredits}
-      - POSTGRES_DB=${POSTGRES_DB:-aftercredits}
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER is required}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB is required}
     # Bound to loopback: the app reaches postgres over the compose network,
     # so the published port is only for local psql/inspection.
     ports:
@@ -28,51 +30,99 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"${POSTGRES_USER:-aftercredits}\" -d \"${POSTGRES_DB:-aftercredits}\""]
+      test: ["CMD-SHELL", "pg_isready -U \"${POSTGRES_USER}\" -d \"${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   db-setup:
     image: lealre/aftercredits-backend:latest
+    pull_policy: always
     container_name: aftercredits-db-setup
-    env_file:
-      - path: .env
-        required: false
+    # Needs the DB connection and the superuser credentials; nothing else.
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER is required}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB is required}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - SUPERUSER_USERNAME=${SUPERUSER_USERNAME:?SUPERUSER_USERNAME is required}
+      - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD:?SUPERUSER_PASSWORD is required}
+      - SUPERUSER_EMAIL=${SUPERUSER_EMAIL:-}
+    user: "1000:1000"
     depends_on:
       postgres:
         condition: service_healthy
     command: ["sh", "-c", "set -e && echo 'Applying schema migrations...' && /app/database -migrate && echo 'Running superuser setup...' && /app/database -superuser"]
     restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
     image: lealre/aftercredits-backend:latest
+    pull_policy: always
     container_name: aftercredits-backend
     restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
+    # The API's secrets: DB connection, JWT signing key, and the title-provider
+    # config. NOT the superuser credentials — only db-setup provisions those.
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER is required}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB is required}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - TITLE_PROVIDER=${TITLE_PROVIDER:-}
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
+      - OMDB_API_KEY=${OMDB_API_KEY:-}
+      - ACTIVITY_FEED_ENABLED=${ACTIVITY_FEED_ENABLED:-true}
+    user: "1000:1000"
     depends_on:
       postgres:
         condition: service_healthy
       db-setup:
         condition: service_completed_successfully
-    ports:
-      - "8080:8080"
+    # NOT published to the host. nginx reaches the backend as backend:8080 over
+    # the compose network; publishing it created a second door that bypassed
+    # every nginx-tier control and was one tunnel-ingress typo from the open
+    # internet. For a local debug handle, add "127.0.0.1:8080:8080" — never a
+    # bare "8080:8080", which binds all interfaces.
+    expose:
+      - "8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile
-    env_file:
-      - path: .env
-        required: false
+    # No env_file / environment: nginx reads no environment variable and the
+    # built bundle inlines none, so handing this internet-facing container the
+    # .env only widened the blast radius of a compromise.
     container_name: aftercredits-frontend
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "8081:80"
+      # Publish only on loopback: cloudflared (host process) reaches it here,
+      # and keeping it off the LAN is what makes the nginx real-IP/rate-limit
+      # config trustworthy. If cloudflared runs as a container instead, drop
+      # this block and put it on the compose network. See the deploy notes.
+      - "127.0.0.1:8081:80"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:

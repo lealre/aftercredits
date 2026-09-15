@@ -1,14 +1,16 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# This is a private application for one household, not a public site.
+#
+# It previously carried `Allow: /` for Googlebot, Bingbot, Twitterbot,
+# facebookexternalhit and a catch-all — actively inviting indexing of a family's
+# watchlist, ratings and comments. Every page behind the login is already
+# unreachable without a token, but the login page itself, the title and the
+# hostname are not, and there is no reason for any of it to be searchable.
+#
+# Note the limit of this file, so it is not mistaken for a control it isn't:
+# robots.txt is a request, and it only stops well-behaved crawlers from
+# *fetching*. It does not prevent a URL discovered elsewhere from being listed.
+# The `noindex` meta tag in index.html is what actually keeps it out of results,
+# and the hostname appears in Certificate Transparency logs the moment its
+# certificate is issued regardless. This closes casual discovery, not discovery.
 User-agent: *
-Allow: /
+Disallow: /

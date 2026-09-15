@@ -15,8 +15,6 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useToast } from "@/hooks/use-toast";
 import { ActivityBell } from "./ActivityBell";
 
-export interface HeaderProps {}
-
 export const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();

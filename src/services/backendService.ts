@@ -17,7 +17,6 @@ import {
   getToken,
   getTokenOrRedirect,
   handleUnauthorized,
-  getErrorMessage,
   getGroupId,
 } from "./authService";
 import {
@@ -133,17 +132,18 @@ const authFetch = async (url: string, options: RequestInit = {}) => {
 
   if (response.status === 401) {
     try {
-      const data = await response.json();
-      const message = getErrorMessage(data) || "Session expired";
+      // Body intentionally not surfaced to the user: the login page shows a
+      // fixed message keyed by reason code, never a server-supplied string.
+      await response.json().catch(() => undefined);
       // Only redirect if we haven't already redirected
       if (window.location.pathname !== '/login') {
-        handleUnauthorized(message);
+        handleUnauthorized();
       }
       throw new Error("Session expired");
     } catch (err) {
       // Only redirect if we haven't already redirected
       if (window.location.pathname !== '/login') {
-        handleUnauthorized("Session expired");
+        handleUnauthorized();
       }
       throw err instanceof Error ? err : new Error("Session expired");
     }
@@ -381,7 +381,18 @@ export const fetchEpisodes = async (titleId: string): Promise<Episode[]> => {
   return (data.episodes ?? []).map(mapBackendEpisode);
 };
 
-export const fetchUsers = async (groupId: string): Promise<User[]> => {
+/*
+ * Returns UserResponse, not User.
+ *
+ * This was typed `Promise<User[]>`, and `User` has no `email` — while the
+ * endpoint returns the full user object and `GroupMembersModal` reads
+ * `member.email` off it. The result was three type errors that had been sitting
+ * on main long enough to look like background noise, when what they were
+ * actually reporting is that this signature described the wrong shape.
+ * Verified against a live response: id, username, email, name, groups,
+ * lastLoginAt, createdAt, updatedAt.
+ */
+export const fetchUsers = async (groupId: string): Promise<UserResponse[]> => {
   try {
     const response = await authFetch(`${API_BASE_URL}/groups/${groupId}/users`);
 

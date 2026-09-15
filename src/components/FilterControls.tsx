@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  loadFiltersFromStorage,
+  saveFiltersToStorage,
+  clearFiltersFromStorage,
+} from '@/lib/filterStorage';
 import { ArrowUpDown, Filter, ChevronDown, X } from 'lucide-react';
 import {
   Select,
@@ -27,36 +32,6 @@ interface FilterControlsProps {
   onClearFilters?: () => void;
 }
 
-const STORAGE_KEY = 'movieFilters';
-
-// Helper functions for localStorage
-const saveFiltersToStorage = (filters: { watchedFilter: string; orderBy?: string; ascending: boolean; titleType?: string }) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
-  } catch (error) {
-    console.error('Error saving filters to localStorage:', error);
-  }
-};
-
-export const loadFiltersFromStorage = (): { watchedFilter: string; orderBy?: string; ascending: boolean; titleType?: string } | null => {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (error) {
-    console.error('Error loading filters from localStorage:', error);
-  }
-  return null;
-};
-
-const clearFiltersFromStorage = () => {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch (error) {
-    console.error('Error clearing filters from localStorage:', error);
-  }
-};
 
 export const FilterControls = ({ 
   watchedFilter, 

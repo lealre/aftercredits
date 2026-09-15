@@ -8,7 +8,6 @@ import { Loader2 } from "lucide-react";
 
 const Index = lazy(() => import("./pages/Index"));
 const Login = lazy(() => import("./pages/Login"));
-const SignUp = lazy(() => import("./pages/SignUp"));
 const UserAccount = lazy(() => import("./pages/UserAccount"));
 const Groups = lazy(() => import("./pages/Groups"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -30,7 +29,8 @@ const App = () => (
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<SignUp />} />
+            {/* Public self-registration is removed: accounts are created by an
+                admin. No /signup route. */}
             <Route path="/account" element={<UserAccount />} />
             <Route path="/groups" element={<Groups />} />
             <Route path="/watchlist" element={<Index />} />
