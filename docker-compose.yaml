@@ -113,16 +113,68 @@ services:
     depends_on:
       - backend
     ports:
-      # Publish only on loopback: cloudflared (host process) reaches it here,
-      # and keeping it off the LAN is what makes the nginx real-IP/rate-limit
-      # config trustworthy. If cloudflared runs as a container instead, drop
-      # this block and put it on the compose network. See the deploy notes.
+      # Loopback only, and now purely for debugging from the Pi itself —
+      # cloudflared is a container on the `tunnel` network below and reaches
+      # this service by name, not through a published port. Keeping it off the
+      # LAN is what makes the nginx real-IP and rate-limit config trustworthy.
       - "127.0.0.1:8081:80"
+    # The single hop between the public internet and everything else: on both
+    # networks, so cloudflared can reach it without cloudflared being able to
+    # reach anything behind it.
+    networks:
+      - default
+      - tunnel
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+  cloudflared:
+    # The Cloudflare Tunnel connector. Makes an OUTBOUND connection to
+    # Cloudflare, so nothing is forwarded at the router and the home IP is
+    # never published.
+    #
+    # Pinned by digest rather than a tag. This process terminates traffic from
+    # the public internet; an unattended image change is not something to find
+    # out about afterwards.
+    image: cloudflare/cloudflared:2026.8.1@sha256:d9ff527dc19799e24d3689058161fb01e752a24be1823577bae54c9c2489275f
+    container_name: aftercredits-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:?TUNNEL_TOKEN is required}
+    # THE control that makes exposing this safe, and the reason it is not run
+    # on the host. On its own network with only the frontend, this container
+    # cannot resolve or route to postgres, the backend, SSH, the dashboard on
+    # :8050, or anything else on the LAN. An ingress rule pointed somewhere it
+    # should not be fails to connect rather than succeeding at something
+    # unintended — the isolation is structural, not a config to get right.
+    networks:
+      - tunnel
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    driver: bridge
+  tunnel:
+    driver: bridge
+    ipam:
+      config:
+        # Pinned, because nginx's set_real_ip_from trusts exactly this range.
+        # Letting Docker choose would silently change which peer is trusted to
+        # set CF-Connecting-IP, and rate limiting would key on the wrong thing.
+        - subnet: 172.20.0.0/16
 
 volumes:
   postgres_data:
