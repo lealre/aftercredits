@@ -174,26 +174,17 @@ const withReadFlag = (events: ActivityEvent[], ids: Set<string>, read: boolean) 
  * The feed itself, fetched while the panel is open, plus cursor paging and
  * mark-as-read.
  *
- * ## Read state is per event
+ * Read state is per event, not a watermark: the backend keeps a row per
+ * (reader, event) and every DTO carries `read`. So "unread" is a set, not a
+ * boundary — marking one row read leaves every other row untouched, which is
+ * what makes clicking a single row meaningful at all.
  *
- * The backend keeps a read row per (reader, event), not one watermark per
- * reader, and every event DTO carries `read` for the asking reader. So "unread"
- * here is a *set*, not a boundary: it is exactly the rows with `read === false`,
- * and nothing is inferred from a count plus a list position. Marking one row
- * read leaves every other row — older ones included — exactly as it was, which
- * is what makes clicking a single row a meaningful action at all.
+ * Nothing marks anything read as a side effect of reading. Opening the panel
+ * runs the query and nothing else; GET /activity does not change read state.
+ * The only writes are the two the user clicks: a row, or "mark all as read".
  *
- * Nothing marks anything read as a side effect of *reading* the feed. Opening
- * the panel runs the query below and nothing else; GET /activity does not
- * change read state either. The only writes are the two the user asks for by
- * clicking: a row, or "mark all as read".
- *
- * ## Paging
- *
- * The first page lives in a TanStack entry (shared with the stream, which
- * merges pushed events into it); every "Load more" page is appended to local
- * state. The two are flattened into one list that is deduplicated by id — see
- * `events` below for why that matters.
+ * The first page lives in a TanStack entry shared with the stream, which merges
+ * pushed events into it; "Load more" pages are appended locally.
  */
 export const useActivityFeedPanel = (open: boolean) => {
   const token = getToken();

@@ -58,7 +58,6 @@ export const PaginationSummary = ({
   const startResult = (currentPage - 1) * pageSize + 1;
   const endResult = Math.min(currentPage * pageSize, totalResults);
 
-  // Build filter description parts
   const filterParts: string[] = [];
   if (orderBy) {
     const sortLabel = sortOptions.find((opt) => opt.value === orderBy)?.label || orderBy;

@@ -42,30 +42,21 @@ const openableTitleId = (event: ActivityEvent): string | null =>
   event.kind === 'title_removed' ? null : event.titleId;
 
 /**
- * The activity bell: an unread badge in the header, and a panel listing what
- * other members of your groups have been doing.
+ * The activity bell: an unread badge, and a panel listing what other members of
+ * your groups have been doing. Renders nothing when the backend has the feature
+ * off (its routes 404) or the session has expired — a broken bell is worse than
+ * none.
  *
- * Renders nothing at all when the backend has the feature switched off (its
- * routes 404) or the session has expired — a broken bell is worse than none.
+ * Every control here is a DropdownMenuItem, not a plain button, and that is
+ * load-bearing. Radix's roving focus only walks its own items, so plain buttons
+ * were unreachable by arrow keys; worse, Radix calls preventDefault() on Tab to
+ * keep focus inside an open menu, so a non-item button is reachable by NO key
+ * at all — which is where "Mark all as read" used to sit.
  *
- * ## Why every control here is a DropdownMenuItem
- *
- * The rows used to be plain `<button>`s inside the menu, and that was the cause
- * of two separate bugs rather than one:
- *
- * 1. Radix's roving focus only walks its own items, so arrow keys did not move
- *    between rows — the list was mouse-only in practice.
- * 2. Radix's Content calls `preventDefault()` on Tab (react-menu keeps focus
- *    inside an open menu), so a non-item button in here is reachable by NO key
- *    at all. "Mark all as read" was in exactly that position.
- *
- * Using the menu's own item primitive fixes both at once and for free:
- * `Item` renders `role="menuitem"`, joins the roving focus group (ArrowUp /
- * ArrowDown / Home / End), joins typeahead, and focuses itself on pointer move.
- * The one behaviour we do not want — closing the panel on select — is the one
- * Radix lets you decline, by calling `preventDefault()` on the `onSelect`
- * event. So every control below is an Item, and each one decides for itself
- * whether selecting it should dismiss the panel.
+ * Item gives roving focus, typeahead and role="menuitem" for free. The one
+ * behaviour we do not want, closing on select, is the one Radix lets you
+ * decline via preventDefault() on onSelect — so each control decides for itself
+ * whether selecting it dismisses the panel.
  */
 export const ActivityBell = () => {
   const navigate = useNavigate();
