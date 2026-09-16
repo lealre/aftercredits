@@ -271,27 +271,17 @@ export const fetchMovies = async (
  * returns inside its `Content`, unwrapped.
  *
  * It exists because that list is paginated: a client holding only a title id
- * (the activity feed, deep-linking a row to that title's modal) cannot count on
- * the entry being on whichever page the grid happens to be showing. The backend
- * builds it through the same assembly as the list, so the result is safe to
- * feed to anything that renders a list entry.
+ * (the activity feed deep-linking to a modal) cannot count on the entry being
+ * on whichever page the grid is showing.
  *
- * ## Why authFetch and not activityFetch
+ * Uses authFetch, not activityFetch, for two separate reasons. This is a
+ * /groups route served whether or not the feed is enabled, so mapping its 404
+ * to ActivityFeatureDisabledError would hide the whole bell over one removed
+ * film. And it is called from a click, not a poll — a 401 on something the user
+ * just asked for should land them on /login, which is what authFetch does.
  *
- * Both distinctions matter here:
- *
- * - This is a `/groups` route, served whether or not the backend runs with the
- *   activity feed switched on. Its 404 is a real, expected answer about one
- *   title — mapping it to ActivityFeatureDisabledError the way the activity
- *   routes do would be the "every 404 means the feature is off" bug all over
- *   again, and would hide the whole bell over one removed film.
- * - It is called from a click, not a background poll. activityFetch declines to
- *   redirect on 401 precisely because a poll must not eject a user mid-session;
- *   a 401 on something the user just asked for *should* land them on /login,
- *   which is what authFetch does.
- *
- * `groupRatings` is null rather than [] when the group has rated nothing, so it
- * is normalized to an array here — every consumer downstream takes a list.
+ * `groupRatings` is null rather than [] when nothing is rated, so it is
+ * normalized here; every consumer downstream takes a list.
  */
 export const fetchGroupTitle = async (
   groupId: string,

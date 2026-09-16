@@ -99,44 +99,28 @@ export interface ActivityStreamState {
 /**
  * Live activity delivery over SSE.
  *
- * ## Lifecycle
+ * **Tickets.** EventSource cannot set an Authorization header — that is the
+ * entire reason they exist. Each is single-use with a short TTL, so every
+ * connect and reconnect mints a fresh one.
  *
- * 1. **Mint a ticket** (`POST /activity/stream-ticket`, normal Bearer auth).
- *    EventSource cannot set an Authorization header, which is the entire
- *    reason tickets exist. Tickets are single-use with a short TTL, so every
- *    connect and every reconnect mints a fresh one — none is ever reused.
- * 2. **Open the EventSource** on `/activity/stream?ticket=…`.
- * 3. **On `open`, take the snapshot** — newest feed page + unread count — and
- *    merge it with anything pushed since, deduplicating by event id.
+ * **Connect, then snapshot.** The order is load-bearing. Reading first leaves a
+ * window where an event lands after the read but before the stream exists, and
+ * is lost with nothing to notice. Connecting first means every event is either
+ * in the snapshot or on the stream; they can overlap, hence the dedupe by id.
+ * The same sequence on every reconnect is what replaces Last-Event-ID replay —
+ * the backend has no replay path, on purpose.
  *
- * The order is load-bearing. Reading *first* leaves a window where an event
- * lands after the read but before the stream exists and is lost with nothing
- * to notice it. Connecting first means every event is either in the snapshot
- * (committed before its query ran) or on the stream (committed after) —
- * nothing can fall between them. They can overlap, hence the dedupe.
+ * **Manual reconnect.** EventSource retries on its own, but re-requests the
+ * same URL, whose ticket the dead connection consumed — so every browser-driven
+ * retry is a guaranteed 401. We close on error (guaranteeing only one
+ * connection is ever alive) and reconnect with a fresh ticket on backoff.
  *
- * The same sequence runs on every reconnect, which is what replaces
- * `Last-Event-ID` replay: the backend has no replay path, on purpose.
- *
- * ## Reconnect
- *
- * EventSource reconnects on its own, and normally you let it. Here you cannot:
- * its retry re-requests the *same URL*, whose ticket was consumed by the
- * connection that just died, so every browser-driven retry is a guaranteed
- * 401. So on `error` we close the source — which guarantees there is never
- * more than one connection alive — and reconnect ourselves with a fresh ticket
- * on an exponential backoff. One loop, not two.
- *
- * ## Own events
- *
- * The backend's hub already drops events whose actor is the subscriber, with
- * the same predicate the feed query uses. So everything that arrives here is
- * both visible to this user and not their own: it counts as unread, and it is
- * worth announcing.
+ * The backend drops events whose actor is the subscriber, so anything arriving
+ * here is both visible to this user and not their own.
  *
  * @param enabled  false tears the stream down (logged out, feature off).
- * @param onEvent  called once per pushed event, for the toast. Held in a ref,
- *                 so an unstable callback does not reconnect the stream.
+ * @param onEvent  called once per pushed event. Held in a ref, so an unstable
+ *                 callback does not reconnect the stream.
  */
 export const useActivityStream = (
   enabled: boolean,
