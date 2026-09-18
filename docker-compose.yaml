@@ -1,8 +1,8 @@
 # The application stack: backend, its migration job, and the web tier.
 #
-# Postgres is NOT here — it lives in the pi-infra repository, which owns the
-# networks below and must be up first. That stack is shared: one postgres
-# cluster serves every service on the host, with a database each.
+# The database and the networks below are provided externally and must already
+# exist. One postgres cluster serves every service on this host, each with its
+# own database.
 #
 # Used both locally and on the Raspberry Pi — the Pi runs entirely from its
 # SSD, so the database lives in a named docker volume rather than a
@@ -34,8 +34,8 @@ services:
       - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD:?SUPERUSER_PASSWORD is required}
       - SUPERUSER_EMAIL=${SUPERUSER_EMAIL:-}
     user: "1000:1000"
-    # postgres is external now, so compose cannot order it. The binary
-    # retries the connection itself — see internal/postgres/retry.go.
+    # Nothing here orders postgres, so the binary retries the connection
+    # itself. See internal/postgres/retry.go.
     command: ["sh", "-c", "set -e && echo 'Applying schema migrations...' && /app/database -migrate && echo 'Running superuser setup...' && /app/database -superuser"]
     restart: "no"
     logging:
@@ -62,9 +62,8 @@ services:
       - OMDB_API_KEY=${OMDB_API_KEY:-}
       - ACTIVITY_FEED_ENABLED=${ACTIVITY_FEED_ENABLED:-true}
     user: "1000:1000"
-    # postgres is external now, so compose cannot order it — the binary retries
-    # the connection itself (internal/postgres/retry.go). db-setup still can be
-    # ordered, and must be: the schema has to exist before the API serves.
+    # The schema must exist before the API serves, so db-setup is ordered.
+    # Postgres is not — the binary retries that connection itself.
     depends_on:
       db-setup:
         condition: service_completed_successfully
@@ -93,7 +92,7 @@ services:
     depends_on:
       - backend
     ports:
-      # Loopback only, and now purely for debugging from the Pi itself —
+      # Loopback only, for debugging from the host —
       # cloudflared is a container on the `tunnel` network below and reaches
       # this service by name, not through a published port. Keeping it off the
       # LAN is what makes the nginx real-IP and rate-limit config trustworthy.
@@ -114,13 +113,13 @@ services:
 
 
 networks:
-  # Both are created and owned by the pi-infra repository, which must be up
-  # before this stack. Declaring them external rather than defining them here
-  # is what makes postgres, prometheus and the tunnel shared infrastructure
-  # instead of this application's private business.
+  # Provided externally and shared with other services on the host, so this
+  # stack joins them rather than defining them. The names are configurable
+  # because they are an interface between separately deployed stacks, and
+  # nothing here should decide what the host calls its networks.
   default:
     external: true
-    name: pi-infra
+    name: ${INFRA_NETWORK:-infra}
   tunnel:
     external: true
-    name: pi-tunnel
+    name: ${TUNNEL_NETWORK:-tunnel}
