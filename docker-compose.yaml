@@ -1,4 +1,8 @@
-# Full application stack (postgres + backend + frontend).
+# The application stack: backend, its migration job, and the web tier.
+#
+# The database and the networks below are provided externally and must already
+# exist. One postgres cluster serves every service on this host, each with its
+# own database.
 #
 # Used both locally and on the Raspberry Pi — the Pi runs entirely from its
 # SSD, so the database lives in a named docker volume rather than a
@@ -15,30 +19,6 @@
 # does not hand over every secret.
 
 services:
-  postgres:
-    image: postgres:16
-    container_name: aftercredits-postgres
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER is required}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB is required}
-    # Bound to loopback: the app reaches postgres over the compose network,
-    # so the published port is only for local psql/inspection.
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT_HOST:-5433}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"${POSTGRES_USER}\" -d \"${POSTGRES_DB}\""]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   db-setup:
     image: lealre/aftercredits-backend:latest
@@ -54,9 +34,8 @@ services:
       - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD:?SUPERUSER_PASSWORD is required}
       - SUPERUSER_EMAIL=${SUPERUSER_EMAIL:-}
     user: "1000:1000"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # Nothing here orders postgres, so the binary retries the connection
+    # itself. See internal/postgres/retry.go.
     command: ["sh", "-c", "set -e && echo 'Applying schema migrations...' && /app/database -migrate && echo 'Running superuser setup...' && /app/database -superuser"]
     restart: "no"
     logging:
@@ -83,9 +62,9 @@ services:
       - OMDB_API_KEY=${OMDB_API_KEY:-}
       - ACTIVITY_FEED_ENABLED=${ACTIVITY_FEED_ENABLED:-true}
     user: "1000:1000"
+    # The schema must exist before the API serves, so db-setup is ordered.
+    # Postgres is not — the binary retries that connection itself.
     depends_on:
-      postgres:
-        condition: service_healthy
       db-setup:
         condition: service_completed_successfully
     # NOT published to the host. nginx reaches the backend as backend:8080 over
@@ -113,7 +92,7 @@ services:
     depends_on:
       - backend
     ports:
-      # Loopback only, and now purely for debugging from the Pi itself —
+      # Loopback only, for debugging from the host —
       # cloudflared is a container on the `tunnel` network below and reaches
       # this service by name, not through a published port. Keeping it off the
       # LAN is what makes the nginx real-IP and rate-limit config trustworthy.
@@ -132,69 +111,15 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  cloudflared:
-    # Opt-in. `docker compose up` does NOT start this; the Pi runs
-    # `docker compose --profile tunnel up -d`.
-    #
-    # Without the profile this service is required, so a plain `up` fails on
-    # any machine with no TUNNEL_TOKEN — which is every machine except the one
-    # actually serving the tunnel. Exposing the app to the internet is a
-    # deployment choice, not a property of the project, and the compose file
-    # should not force every developer to make it.
-    profiles: [tunnel]
-
-    # The Cloudflare Tunnel connector. Makes an OUTBOUND connection to
-    # Cloudflare, so nothing is forwarded at the router and the home IP is
-    # never published.
-    #
-    # Pinned by digest rather than a tag. This process terminates traffic from
-    # the public internet; an unattended image change is not something to find
-    # out about afterwards.
-    image: cloudflare/cloudflared:2026.8.1@sha256:d9ff527dc19799e24d3689058161fb01e752a24be1823577bae54c9c2489275f
-    container_name: aftercredits-cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    # Deliberately NOT `${TUNNEL_TOKEN:?...}`. Compose interpolates the whole
-    # file before it applies profiles, so a required variable here fails a
-    # plain `docker compose up` even though this service is not being started —
-    # which broke local dev on every machine without a tunnel. The empty
-    # default keeps the guard off the shared path; cloudflared itself refuses
-    # to start on an empty token, and that is only reachable by someone who
-    # explicitly asked for the profile.
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
-    # THE control that makes exposing this safe, and the reason it is not run
-    # on the host. On its own network with only the frontend, this container
-    # cannot resolve or route to postgres, the backend, SSH, the dashboard on
-    # :8050, or anything else on the LAN. An ingress rule pointed somewhere it
-    # should not be fails to connect rather than succeeding at something
-    # unintended — the isolation is structural, not a config to get right.
-    networks:
-      - tunnel
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    mem_limit: 256m
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 networks:
+  # Provided externally and shared with other services on the host, so this
+  # stack joins them rather than defining them. The names are configurable
+  # because they are an interface between separately deployed stacks, and
+  # nothing here should decide what the host calls its networks.
   default:
-    driver: bridge
+    external: true
+    name: ${INFRA_NETWORK:-infra}
   tunnel:
-    driver: bridge
-    ipam:
-      config:
-        # Pinned, because nginx's set_real_ip_from trusts exactly this range.
-        # Letting Docker choose would silently change which peer is trusted to
-        # set CF-Connecting-IP, and rate limiting would key on the wrong thing.
-        - subnet: 172.20.0.0/16
-
-volumes:
-  postgres_data:
-    name: aftercredits-postgres-data
+    external: true
+    name: ${TUNNEL_NETWORK:-tunnel}
