@@ -1,3 +1,8 @@
+export interface TitleAuthor {
+  id: string;
+  username: string;
+}
+
 export interface Season {
   season: string;
   episodeCount: number;
@@ -56,6 +61,12 @@ export interface Movie {
   watched?: boolean;
   watchedAt?: string;
   addedDate: string;
+  /** Null when nobody was recorded: the title predates the backend storing
+   *  this, or the account that added it was deleted outright. */
+  addedBy?: TitleAuthor | null;
+  /** Who set the CURRENT watched state — not who watched it. Null when the
+   *  title is unwatched, or when nobody was recorded. */
+  watchedMarkedBy?: TitleAuthor | null;
   seasons?: Season[];
   episodes?: Episode[];
   seasonsWatched?: Record<string, SeasonWatched>; // season number -> watched info

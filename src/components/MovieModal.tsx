@@ -29,7 +29,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Star, Trash2, ExternalLink, X, Edit3, Check, Calendar } from 'lucide-react';
+import { Star, Trash2, ExternalLink, X, Edit3, Check, Calendar, Info } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { titleProvenance, watchedProvenance } from '@/lib/titleProvenance';
+import { useHoverCapable } from '@/hooks/useHoverCapable';
 import { useToast } from '@/hooks/use-toast';
 import { StarRating } from './StarRating';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
@@ -67,6 +70,10 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
   const currentGroupId = useActiveGroupId();
 
   // Check if this is a TV series - must be declared before useEffects that use it
+  const provenance = titleProvenance(movie.addedBy, movie.addedDate);
+  const watchedInfo = watchedProvenance(movie.watchedMarkedBy, movie.watchedAt);
+  const canHover = useHoverCapable();
+  const [provenanceOpen, setProvenanceOpen] = useState(false);
   const isTVSeries = movie.type === 'tvSeries' || movie.type === 'tvMiniSeries';
 
   // Episodes are fetched on demand (backend omits them from the list payload)
@@ -485,6 +492,94 @@ export const MovieModal = ({ movie, isOpen, onClose, onUpdate, onDelete, onRefre
                     >
                       <ExternalLink className="w-4 h-4" />
                     </Button>
+
+                    {/* Who added this title to the group, and when.
+                        A Popover rather than a Tooltip on purpose: Radix
+                        tooltips open on hover and focus but NOT on touch, so
+                        this would have been invisible on a phone.
+
+                        Rendered only when there is something to say — titles
+                        added before the backend recorded authorship have no
+                        author, and a panel saying nothing is worse than no
+                        button at all. */}
+                    {(provenance || watchedInfo) && (
+                      <Popover open={provenanceOpen} onOpenChange={setProvenanceOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label="Who added this title"
+                            // Hover opens it on a device that can hover; tap and
+                            // click still work everywhere, which is what a phone
+                            // needs. One component rather than a Tooltip and a
+                            // Popover swapped by device — Radix tooltips do not
+                            // open on touch at all.
+                            onMouseEnter={canHover ? () => setProvenanceOpen(true) : undefined}
+                            onMouseLeave={canHover ? () => setProvenanceOpen(false) : undefined}
+                            onFocus={canHover ? () => setProvenanceOpen(true) : undefined}
+                            onBlur={canHover ? () => setProvenanceOpen(false) : undefined}
+                            className="text-muted-foreground hover:text-movie-blue"
+                          >
+                            <Info className="w-4 h-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          side="bottom"
+                          sideOffset={6}
+                          // Without this the panel steals focus on open, which
+                          // on a hover device immediately blurs the trigger and
+                          // closes it again.
+                          onOpenAutoFocus={(e) => canHover && e.preventDefault()}
+                          onMouseEnter={canHover ? () => setProvenanceOpen(true) : undefined}
+                          onMouseLeave={canHover ? () => setProvenanceOpen(false) : undefined}
+                          className="w-auto max-w-[min(15rem,calc(100vw-1.5rem))] px-3 py-2"
+                        >
+                          <div className="space-y-2 text-xs leading-relaxed text-muted-foreground">
+                            {provenance && (
+                              <p>
+                                {provenance.who ? (
+                                  <>
+                                    Added by{' '}
+                                    <span className="font-medium text-foreground">{provenance.who}</span>
+                                  </>
+                                ) : (
+                                  'Added'
+                                )}
+                                {provenance.when && (
+                                  <>
+                                    <br />
+                                    {provenance.when}
+                                  </>
+                                )}
+                              </p>
+                            )}
+                            {/* "Marked watched by", never "Watched by": watched
+                                is a fact about the group, not a claim that this
+                                one person saw it. Only the last change, not the
+                                history — the activity feed has that. */}
+                            {watchedInfo && (
+                              <p>
+                                {watchedInfo.who ? (
+                                  <>
+                                    Marked watched by{' '}
+                                    <span className="font-medium text-foreground">{watchedInfo.who}</span>
+                                  </>
+                                ) : (
+                                  'Marked watched'
+                                )}
+                                {watchedInfo.when && (
+                                  <>
+                                    <br />
+                                    {watchedInfo.when}
+                                  </>
+                                )}
+                              </p>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {movie.year} • {movie.genre}
