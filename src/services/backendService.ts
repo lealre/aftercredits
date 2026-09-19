@@ -12,6 +12,7 @@ import {
   SearchTitle,
   Episode,
   TitleNotInGroupError,
+  TitleAuthor,
 } from "@/types/movie";
 import {
   getToken,
@@ -98,6 +99,9 @@ interface BackendMovie {
   groupRatings: Rating[] | null;
   watched: boolean;
   watchedAt?: string;
+  addedAt: string;
+  addedBy: TitleAuthor | null;
+  watchedMarkedBy: TitleAuthor | null;
 }
 
 interface BackendPaginatedResponse {
@@ -189,7 +193,11 @@ const mapBackendMovieToMovie = (backendMovie: BackendMovie): Movie => {
     director: backendMovie.directorsNames.join(", "),
     actors: backendMovie.starsNames.join(", "),
     runtimeSeconds: backendMovie.runtimeSeconds,
-    addedDate: new Date().toISOString().split("T")[0],
+    // The API's value, not today's. This was `new Date()`, so every title
+    // claimed to have been added the moment the page was rendered.
+    addedDate: backendMovie.addedAt,
+    addedBy: backendMovie.addedBy ?? null,
+    watchedMarkedBy: backendMovie.watchedMarkedBy ?? null,
     watched: backendMovie.watched,
     watchedAt: backendMovie.watchedAt,
     seasons: backendMovie.seasons,
