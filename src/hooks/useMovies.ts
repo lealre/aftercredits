@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Movie, PaginationParams, Rating } from "@/types/movie";
 import { fetchMovies } from "@/services/backendService";
 import { useActiveGroupId } from "@/hooks/useActiveGroupId";
+import { listFilterKey } from "@/lib/listFilterKey";
 
 export const useMovies = (
   watchedFilter?: boolean,
@@ -18,6 +19,21 @@ export const useMovies = (
   const [ascending, setAscending] = useState<boolean>(initialAscending ?? true);
 
   const groupId = useActiveGroupId();
+
+  // Back to page 1 whenever the filters change which titles are in the list.
+  // Otherwise the page number outlives the result set it indexed: on page 3 of
+  // all titles, switching to Unwatched (2 pages) requested page 3 and showed an
+  // empty list.
+  //
+  // Reset during render rather than in an effect, so the stale page is never
+  // requested — an effect would fire the empty page-3 query first and only
+  // then correct it.
+  const filterKey = listFilterKey({ groupId, watched: watchedFilter, titleType, orderBy, ascending });
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  if (filterKey !== lastFilterKey) {
+    setLastFilterKey(filterKey);
+    setPage(1);
+  }
 
   const params: PaginationParams = {
     page,
